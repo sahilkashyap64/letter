@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Convert Expanded Outline to 1D Stroke using SVG.js & Skeleton-Tracing-JS</title>
+    <!-- Load SVG.js for vector drawing -->
+    <script src="https://cdn.jsdelivr.net/npm/@svgdotjs/svg.js@3.1/dist/svg.min.js"></script>
+    <!-- Load skeleton-tracing-js -->
+    <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 20px;
+        background: #222;
+        color: #eee;
+      }
+      #container {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .box {
+        border: 1px solid #555;
+        background: #111;
+        padding: 10px;
+      }
+      #originalSVG {
+        width: 600px;
+        height: 600px;
+      }
+      #skeletonSVG {
+        width: 600px;
+        height: 600px;
+      }
+      /* Hide the offscreen canvas */
+      #offscreenCanvas {
+        display: none;
+      }
+      h2 {
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Convert Expanded Outline to Centerline Stroke</h1>
+    <div id="container">
+      <div class="box">
+        <h2>Original Expanded Outline (SVG.js)</h2>
+        <div id="originalSVG"></div>
+      </div>
+      <div class="box">
+        <h2>Extracted Centerline (Skeleton)</h2>
+        <div id="skeletonSVG"></div>
+      </div>
+    </div>
+    <!-- Offscreen canvas for rendering SVG as raster -->
+    <canvas id="offscreenCanvas" width="600" height="600"></canvas>
+    
+    <script>
+      /***********************
+       * Step 1. Draw an Expanded Outline using SVG.js
+       ***********************/
+      // Create an SVG drawing in the #originalSVG container.
+      const draw = SVG().addTo('#originalSVG').size(600,600);
+      
+      // For demonstration, we create an expanded (buffered) outline.
+      // Here we create a thick “V” shape with rounded corners.
+      // In a real application, this might come from a font offset operation.
+      const outline = draw.path("M100,100 C120,50 180,50 200,100 L250,300 C270,350 330,350 350,300 L400,100 C420,50 480,50 500,100")
+                           .fill("none")
+                           .stroke({ color: "white", width: 40, linecap: "round", linejoin: "round" });
+      
+      // (For visualization, the thick white stroke represents the expanded outline.)
+      
+      /***********************
+       * Step 2. Render the SVG Outline onto a Hidden Canvas
+       ***********************/
+      function renderSVGToCanvas(svgElement, canvasElement, callback) {
+        // Get the outer HTML of the SVG element
+        const svgString = svgElement.outerHTML;
+        // Create a Blob from the SVG string
+        const blob = new Blob([svgString], {type: "image/svg+xml;charset=utf-8"});
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = function() {
+          const ctx = canvasElement.getContext("2d");
+          // Clear the canvas
+          ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+          // Draw the image on the canvas
+          ctx.drawImage(img, 0, 0, canvasElement.width, canvasElement.height);
+          URL.revokeObjectURL(url);
+          callback();
+        };
+        img.src = url;
+      }
+      
+      /***********************
+       * Step 3. Extract Skeleton using Skeleton-Tracing-JS
+       ***********************/
+      function extractSkeleton(canvasElement) {
+        // This API takes a canvas element and returns a skeleton object:
+        // { polylines: [ [ [x,y], [x,y], ... ], ... ], rects: [...] }
+        const skeleton = TraceSkeleton.fromCanvas(canvasElement);
+        return skeleton;
+      }
+      
+      /***********************
+       * Step 4. Visualize the Skeleton
+       ***********************/
+      function visualizeSkeleton(skeleton, containerElement) {
+        // Options:
+        // scale: factor to scale the output (set to 1 for 600x600)
+        // strokeWidth: desired stroke width for visualization
+        // keypoints: if true, draw keypoints as small red squares.
+        const options = {
+          scale: 1,
+          strokeWidth: 2,
+          keypoints: true
+        };
+        const svgString = TraceSkeleton.visualize(skeleton, options);
+        containerElement.innerHTML = svgString;
+      }
+      
+      /***********************
+       * Full Pipeline
+       ***********************/
+      const offscreenCanvas = document.getElementById("offscreenCanvas");
+      const originalSVGElement = document.getElementById("originalSVG").querySelector("svg");
+      const skeletonContainer = document.getElementById("skeletonSVG");
+      
+      // Render the SVG to the offscreen canvas, then extract and visualize the skeleton.
+      renderSVGToCanvas(originalSVGElement, offscreenCanvas, function() {
+        const skeleton = extractSkeleton(offscreenCanvas);
+        visualizeSkeleton(skeleton, skeletonContainer);
+        console.log("Extracted Skeleton Data:", skeleton.polylines);
+      });
+    </script>
+  </body>
+</html>
