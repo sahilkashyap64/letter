@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interactive SVG Path Editor</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f0f0f0;
+      margin: 20px;
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    p {
+      margin-bottom: 10px;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 12px;
+      font-size: 14px;
+    }
+    /* Style the SVG (we use the provided dimensions) */
+    svg {
+      border: 1px solid #ccc;
+      background: #fff;
+      display: block;
+      margin: 20px 0;
+    }
+    /* Optional: style for the interactive circles */
+    .pointCircle {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Interactive SVG Path Editor</h1>
+  <p>
+    Click on any point (red circles) to toggle its selection (selected points turn blue). Then use the buttons below to merge contiguous selected points or delete selected points.
+  </p>
+  <button id="mergeSelectedButton">Merge Selected Points</button>
+  <button id="deleteSelectedButton">Delete Selected Points</button>
+  <button id="resetButton">Reset Paths</button>
+
+  <!-- Your provided SVG -->
+  <svg id="letterSVG" width="600" height="600" viewBox="0 0 600 600">
+    <path d="M69.43359375,57.8125 L69.140625,70.41015625 L22.0703125,200 L2.83203125,200 L57.03125,57.8125 L69.43359375,57.8125" fill="none" stroke="red" stroke-width="2"></path>
+    <path d="M127.9296875,200 L108.59375,200 L61.42578125,70.41015625 L61.1328125,57.8125 L73.53515625,57.8125 L127.9296875,200" fill="none" stroke="green" stroke-width="2"></path>
+    <path d="M26.26953125,147.36328125 L106.15234375,147.36378125 L106.15234375,162.79296875 L26.26953125,162.79296875 L26.26953125,147.36328125" fill="none" stroke="blue" stroke-width="2"></path>
+  </svg>
+
+  <script>
+    /***** GLOBAL VARIABLES AND SETUP *****/
+    const svgCanvas = document.getElementById('letterSVG');
+    const mergeSelectedButton = document.getElementById('mergeSelectedButton');
+    const deleteSelectedButton = document.getElementById('deleteSelectedButton');
+    const resetButton = document.getElementById('resetButton');
+
+    // We’ll store an array of “shapes” (one per <path>) where each shape has:
+    // - pathElement: the original <path> element,
+    // - polyline: an array of point objects { x, y, selected },
+    // - originalPolyline: a copy used for reset.
+    let shapes = [];
+
+    /***** UTILITY FUNCTIONS *****/
+
+    // Parse a path's "d" attribute into an array of point objects.
+    function parsePathD(d) {
+      const points = [];
+      // This regex finds groups that start with M or L and then capture the following numbers.
+      const regex = /[ML]([^ML]+)/g;
+      let match;
+      while ((match = regex.exec(d)) !== null) {
+        const coordsStr = match[1].trim();
+        // Coordinates may be separated by commas or spaces.
+        const coords = coordsStr.split(/[\s,]+/).filter(x => x !== "");
+        if (coords.length >= 2) {
+          const x = parseFloat(coords[0]);
+          const y = parseFloat(coords[1]);
+          points.push({ x: x, y: y, selected: false });
+        }
+      }
+      return points;
+    }
+
+    // Update a shape's path element (the "d" attribute) based on its polyline.
+    function updatePath(shape) {
+      let d = shape.polyline
+        .map((pt, i) => (i === 0 ? "M" : "L") + pt.x + " " + pt.y)
+        .join(" ");
+      shape.pathElement.setAttribute("d", d);
+    }
+
+    // Draw interactive circles for each point (overlaid on the SVG).
+    function drawAllPoints() {
+      // Remove any existing circles with class "pointCircle"
+      const existingCircles = svgCanvas.querySelectorAll('.pointCircle');
+      existingCircles.forEach(circle => circle.remove());
+
+      shapes.forEach((shape, shapeIndex) => {
+        shape.polyline.forEach((pt, pointIndex) => {
+          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          circle.setAttribute("cx", pt.x);
+          circle.setAttribute("cy", pt.y);
+          circle.setAttribute("r", 4);
+          circle.setAttribute("class", "pointCircle");
+          circle.setAttribute("data-shape-index", shapeIndex);
+          circle.setAttribute("data-point-index", pointIndex);
+          // Use blue fill for selected, red for unselected.
+          circle.setAttribute("fill", pt.selected ? "blue" : "red");
+          circle.setAttribute("stroke", "black");
+          circle.style.cursor = "pointer";
+          circle.addEventListener("click", function(e) {
+            // Prevent click events from bubbling up.
+            e.stopPropagation();
+            const sIndex = parseInt(circle.getAttribute("data-shape-index"));
+            const pIndex = parseInt(circle.getAttribute("data-point-index"));
+            // Toggle selection.
+            shapes[sIndex].polyline[pIndex].selected = !shapes[sIndex].polyline[pIndex].selected;
+            // Update the circle's fill.
+            circle.setAttribute("fill", shapes[sIndex].polyline[pIndex].selected ? "blue" : "red");
+          });
+          svgCanvas.appendChild(circle);
+        });
+      });
+    }
+
+    /***** INITIALIZATION *****/
+
+    // Create the "shapes" array by parsing each <path> in the SVG.
+    function initShapes() {
+      shapes = [];
+      const pathElements = svgCanvas.querySelectorAll('path');
+      pathElements.forEach((pathElem) => {
+        const d = pathElem.getAttribute("d");
+        const polyline = parsePathD(d);
+        // Keep a copy of the original polyline for resetting.
+        const originalPolyline = polyline.map(pt => ({ x: pt.x, y: pt.y, selected: pt.selected }));
+        shapes.push({
+          pathElement: pathElem,
+          polyline: polyline,
+          originalPolyline: originalPolyline
+        });
+      });
+    }
+
+    /***** OPERATIONS ON POLYLINES *****/
+
+    // Merge contiguous selected points in a polyline.
+    function mergeSelectedPointsPolyline(polyline) {
+      if (!polyline || polyline.length === 0) return polyline;
+      const newPolyline = [];
+      let i = 0;
+      while (i < polyline.length) {
+        if (polyline[i].selected) {
+          let sumX = 0, sumY = 0, count = 0;
+          let j = i;
+          // Merge all consecutive selected points.
+          while (j < polyline.length && polyline[j].selected) {
+            sumX += polyline[j].x;
+            sumY += polyline[j].y;
+            count++;
+            j++;
+          }
+          newPolyline.push({ x: sumX / count, y: sumY / count, selected: false });
+          i = j;
+        } else {
+          newPolyline.push(polyline[i]);
+          i++;
+        }
+      }
+      return newPolyline;
+    }
+
+    // Delete all selected points from a polyline.
+    function deleteSelectedPointsPolyline(polyline) {
+      return polyline.filter(pt => !pt.selected);
+    }
+
+    // Update every shape's path element and redraw all interactive circles.
+    function updateAll() {
+      shapes.forEach(shape => {
+        updatePath(shape);
+      });
+      drawAllPoints();
+    }
+
+    /***** SETUP AND INITIAL RENDER *****/
+    initShapes();
+    updateAll();
+
+    /***** EVENT LISTENERS FOR BUTTONS *****/
+
+    // Merge selected points for each shape.
+    mergeSelectedButton.addEventListener("click", function() {
+      shapes.forEach(shape => {
+        shape.polyline = mergeSelectedPointsPolyline(shape.polyline);
+        updatePath(shape);
+      });
+      drawAllPoints();
+    });
+
+    // Delete all selected points from each shape.
+    deleteSelectedButton.addEventListener("click", function() {
+      shapes.forEach(shape => {
+        shape.polyline = deleteSelectedPointsPolyline(shape.polyline);
+        updatePath(shape);
+      });
+      drawAllPoints();
+    });
+
+    // Reset all shapes to their original state.
+    resetButton.addEventListener("click", function() {
+      shapes.forEach(shape => {
+        shape.polyline = shape.originalPolyline.map(pt => ({ x: pt.x, y: pt.y, selected: false }));
+        updatePath(shape);
+      });
+      drawAllPoints();
+    });
+  </script>
+</body>
+</html>
