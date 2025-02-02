@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8">
-    <title>Font Letter Stroke Editor with Hershey & Stroke Editing</title>
+    <title>Extract Strokes from Outlines</title>
     <!-- Load opentype.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
     <style>
@@ -59,7 +59,7 @@
     </style>
   </head>
   <body>
-    <!-- Toolbar for font selection, letter input, and generation -->
+    <!-- Toolbar: letter input, font selection, generate and add stroke -->
     <div id="toolbar">
       <label>
         Letter:
@@ -68,7 +68,7 @@
       <label>
         Font:
         <select id="fontSelect">
-          <!-- Options will be added from default fonts -->
+          <!-- Options added by script -->
         </select>
       </label>
       <label>
@@ -79,7 +79,7 @@
       <button id="addStrokeButton">Add Stroke</button>
     </div>
 
-    <!-- Display Area: shows the generated letter SVG (split into strokes) -->
+    <!-- Display Area: shows the generated letter SVG (strokes extracted) -->
     <div id="displayArea">
       <svg id="letterSVG" width="600" height="600" viewBox="0 0 600 600"></svg>
     </div>
@@ -90,9 +90,9 @@
       <ul id="strokeList"></ul>
     </div>
 
-    <!-- Raw SVG Path Data Output -->
+    <!-- Raw Path Data Output -->
     <div id="rawPathContainer">
-      <h3>Raw SVG Path Data</h3>
+      <h3>Raw Extracted Path Data</h3>
       <textarea id="rawPathOutput" readonly></textarea>
     </div>
 
@@ -105,20 +105,11 @@
       /***********************
        * Global Variables
        ***********************/
-      // Default fonts to load – note that we add Hershey as a special case.
+      // Default fonts to load (you can change these URLs as needed)
       const defaultFonts = [
-        {
-          name: "English",
-          url: "./Roboto[wdth,wght].ttf"
-        },
-        {
-          name: "Hindi",
-          url: "./Lohit-Devanagari.ttf"
-        },
-        {
-          name: "Arabic",
-          url: "./Amiri-Regular.ttf"
-        }
+        { name: "English", url: "./Roboto[wdth,wght].ttf" },
+        { name: "Hindi", url: "./Lohit-Devanagari.ttf" },
+        { name: "Arabic", url: "./Amiri-Regular.ttf" }
       ];
       // Object to hold loaded fonts (by name)
       const loadedFonts = {};
@@ -127,42 +118,114 @@
 
       // Global variables for the current letter template
       let currentLetter = "";
-      // strokesData: array of stroke objects: { d: (path data string), points: [ {X, Y, ID} ], color: (string) }
+      // strokesData: array of stroke objects: { d: (SVG path data), points: [ {X, Y, ID} ], color: (string) }
       let strokesData = [];
-      // Raw path (the full SVG path string from the glyph)
+      // Raw path string (for display purposes)
       let rawSVGPath = "";
-      
+
       // Variables for "add stroke" mode.
       let addingStrokeMode = false;
       let drawingStroke = false;
       let currentStrokePoints = [];
 
       /***********************
-       * Hershey Data (sample)
+       * Extract Strokes from Outlines
+       *
+       * This function uses the glyph's commands (from opentype.js) to extract
+       * anchor points and sample curves. It then groups them into strokes.
+       * Finally, it calls joinStrokes() to merge strokes whose endpoints are very close.
        ***********************/
-      // For demonstration, we define Hershey stroke order for letter "A".
-      // You can extend this object with more letters.
-      const hersheyData = {
-        "A": {
-          strokes: [
-            { d: "M300,100 L200,400", points: samplePathPoints("M300,100 L200,400", 0), color: "red" },
-            { d: "M300,100 L400,400", points: samplePathPoints("M300,100 L400,400", 1), color: "green" },
-            { d: "M230,280 L370,280", points: samplePathPoints("M230,280 L370,280", 2), color: "blue" }
-          ]
-        }
-      };
+      function extractStrokesFromGlyphOutline(glyph, fontSize) {
+        let path = glyph.getPath(0, fontSize, fontSize);
+        let commands = path.commands; // array of commands (M, L, Q, C, Z, etc.)
+        let strokes = [];
+        let currentStroke = [];
 
-      /***********************
-       * Utility Functions
-       ***********************/
-      // Splits an SVG path data string into segments based on the "M" command.
-      function splitPathData(d) {
-        const segments = d.split(/(?=M)/);
-        return segments.filter(seg => seg.trim().length > 0);
+        commands.forEach(cmd => {
+          if (cmd.type === "M") {
+            // Start of a new contour.
+            if (currentStroke.length > 0) {
+              strokes.push(currentStroke);
+            }
+            currentStroke = [];
+            currentStroke.push({ x: cmd.x, y: cmd.y });
+          } else if (cmd.type === "L") {
+            currentStroke.push({ x: cmd.x, y: cmd.y });
+          } else if (cmd.type === "Q") {
+            // Quadratic curve: sample several points along the curve.
+            let sampleCount = 5;
+            let lastPt = currentStroke[currentStroke.length - 1];
+            for (let i = 1; i <= sampleCount; i++) {
+              let t = i / sampleCount;
+              let x = (1 - t) * (1 - t) * lastPt.x + 2 * (1 - t) * t * cmd.x1 + t * t * cmd.x;
+              let y = (1 - t) * (1 - t) * lastPt.y + 2 * (1 - t) * t * cmd.y1 + t * t * cmd.y;
+              currentStroke.push({ x: x, y: y });
+            }
+          } else if (cmd.type === "C") {
+            // Cubic curve: sample several points along the curve.
+            let sampleCount = 5;
+            let lastPt = currentStroke[currentStroke.length - 1];
+            for (let i = 1; i <= sampleCount; i++) {
+              let t = i / sampleCount;
+              let x = Math.pow(1-t,3)*lastPt.x +
+                      3*Math.pow(1-t,2)*t*cmd.x1 +
+                      3*(1-t)*Math.pow(t,2)*cmd.x2 +
+                      Math.pow(t,3)*cmd.x;
+              let y = Math.pow(1-t,3)*lastPt.y +
+                      3*Math.pow(1-t,2)*t*cmd.y1 +
+                      3*(1-t)*Math.pow(t,2)*cmd.y2 +
+                      Math.pow(t,3)*cmd.y;
+              currentStroke.push({ x: x, y: y });
+            }
+          } else if (cmd.type === "Z") {
+            // Close the contour.
+            if (currentStroke.length > 0) {
+              strokes.push(currentStroke);
+              currentStroke = [];
+            }
+          }
+        });
+        if (currentStroke.length > 0) {
+          strokes.push(currentStroke);
+        }
+        // Optionally join strokes whose endpoints are very close.
+        return joinStrokes(strokes, 10);
       }
 
-      // Given a path data segment and a stroke ID, create a temporary SVG path element,
-      // sample numSamples points along its length, and return an array of points.
+      // Simple function to join strokes if the end of one stroke is very near the beginning of the next.
+      function joinStrokes(strokes, threshold) {
+        let joined = [];
+        if (strokes.length === 0) return joined;
+        let current = strokes[0];
+        for (let i = 1; i < strokes.length; i++) {
+          let lastPt = current[current.length - 1];
+          let firstPt = strokes[i][0];
+          let dx = lastPt.x - firstPt.x;
+          let dy = lastPt.y - firstPt.y;
+          let dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < threshold) {
+            // Merge strokes (skip the duplicate starting point).
+            current = current.concat(strokes[i].slice(1));
+          } else {
+            joined.push(current);
+            current = strokes[i];
+          }
+        }
+        joined.push(current);
+        return joined;
+      }
+
+      // Convert an array of points into an SVG path data string.
+      function strokeToPathData(stroke) {
+        return stroke
+          .map((pt, i) => (i === 0 ? "M" : "L") + pt.x + "," + pt.y)
+          .join(" ");
+      }
+
+      /***********************
+       * Existing Utility Functions
+       ***********************/
+      // This function uses a temporary SVG element to sample points along a given path data string.
       function samplePathPoints(pathData, strokeID, numSamples = 50) {
         const tempSVG = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         const tempPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -179,7 +242,7 @@
         return points;
       }
 
-      // Renders the strokes into the SVG container and updates the stroke list.
+      // Renders the strokes into the SVG container and updates the stroke order list.
       function renderStrokes() {
         const svg = document.getElementById("letterSVG");
         svg.innerHTML = "";
@@ -233,7 +296,6 @@
             });
             li.appendChild(downBtn);
           }
-          // Delete button
           const delBtn = document.createElement("button");
           delBtn.textContent = "X";
           delBtn.addEventListener("click", () => {
@@ -275,7 +337,7 @@
           opt.value = font.name;
           opt.textContent = font.name;
           fontSelect.appendChild(opt);
-          // For Hershey, we do not load via opentype.js.
+          // For fonts other than Hershey, load via opentype.js.
           if (font.name !== "Hershey" && font.url) {
             opentype.load(font.url, function(err, loadedFont) {
               if (err) {
@@ -302,10 +364,7 @@
             const fontSelect = document.getElementById("fontSelect");
             let exists = false;
             for (let i = 0; i < fontSelect.options.length; i++) {
-              if (fontSelect.options[i].value === name) {
-                exists = true;
-                break;
-              }
+              if (fontSelect.options[i].value === name) { exists = true; break; }
             }
             if (!exists) {
               const opt = document.createElement("option");
@@ -339,11 +398,11 @@
         if (fontName === "Hershey") {
           if (hersheyData[currentLetter] && hersheyData[currentLetter].strokes) {
             strokesData = [];
-            // Clone the strokes from hersheyData (so future edits don’t affect the original)
             hersheyData[currentLetter].strokes.forEach(s => {
+              // (For production, consider deep–cloning points.)
               strokesData.push({
                 d: s.d,
-                points: s.points, // In a real app, you might deep–clone these
+                points: s.points,
                 color: s.color
               });
             });
@@ -354,7 +413,7 @@
             alert("No Hershey data available for letter " + currentLetter);
           }
         } else {
-          // Otherwise use opentype.js conversion.
+          // Use opentype.js to convert the letter's glyph into an outline.
           const font = loadedFonts[fontName];
           if (!font) {
             alert("Font not loaded yet. Please try again later.");
@@ -362,20 +421,19 @@
           }
           const fontSize = 200;
           const glyph = font.charToGlyph(letterInput);
-          const path = glyph.getPath(0, fontSize, fontSize);
-          rawSVGPath = path.toPathData();
-          document.getElementById("rawPathOutput").value = rawSVGPath;
-          const segments = splitPathData(rawSVGPath);
-          strokesData = [];
-          segments.forEach((seg, index) => {
-            const color = strokeColors[index % strokeColors.length];
-            const points = samplePathPoints(seg, index);
-            strokesData.push({
-              d: seg,
-              points: points,
-              color: color
-            });
+          // Instead of simply using getPath().toPathData(),
+          // extract strokes by processing the glyph's commands.
+          const extractedStrokes = extractStrokesFromGlyphOutline(glyph, fontSize);
+          strokesData = extractedStrokes.map((stroke, index) => {
+            return {
+              d: strokeToPathData(stroke),
+              points: samplePathPoints(strokeToPathData(stroke), index),
+              color: strokeColors[index % strokeColors.length]
+            };
           });
+          // Optionally, display the raw combined path (here we simply join each stroke's path data)
+          rawSVGPath = strokesData.map(s => s.d).join(" ");
+          document.getElementById("rawPathOutput").value = rawSVGPath;
           renderStrokes();
         }
       }
@@ -408,7 +466,6 @@
         if (!addingStrokeMode || !drawingStroke) return;
         const pt = getSVGPoint(e);
         currentStrokePoints.push(pt);
-        // Optionally, you can update a temporary drawing here.
       }
       
       function onStrokeMouseUp(e) {
@@ -416,12 +473,11 @@
         drawingStroke = false;
         const pt = getSVGPoint(e);
         currentStrokePoints.push(pt);
-        // Build a simple path data string from the points.
+        // Build an SVG path data string from the drawn points.
         let d = "";
         currentStrokePoints.forEach((p, i) => {
           d += (i === 0 ? "M" : "L") + p.x + "," + p.y + " ";
         });
-        // Use the next available stroke color.
         const color = strokeColors[strokesData.length % strokeColors.length];
         const newStroke = {
           d: d.trim(),
@@ -430,11 +486,10 @@
         };
         strokesData.push(newStroke);
         renderStrokes();
-        // Exit add stroke mode.
         exitAddStrokeMode();
       }
       
-      // Get mouse position relative to the SVG coordinate system.
+      // Convert mouse event coordinates to SVG coordinate system.
       function getSVGPoint(evt) {
         const svg = document.getElementById("letterSVG");
         const pt = svg.createSVGPoint();
