@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Stroke Order for Letter A</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 20px;
+      }
+      #strokeOrderControls {
+        margin: 20px;
+      }
+      svg {
+        border: 1px solid #ccc;
+        background: #f9f9f9;
+      }
+      ul {
+        margin-top: 10px;
+        padding-left: 20px;
+      }
+      li {
+        margin-bottom: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="strokeOrderControls">
+      <h3>Stroke Order for Letter A</h3>
+      <!-- This SVG shows the letter A with stroke order and writing direction -->
+      <svg id="letterSVG" width="600" height="600" viewBox="0 0 600 600">
+        <defs>
+          <!-- Arrow marker used to indicate writing direction -->
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="0" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="black" />
+          </marker>
+        </defs>
+
+        <!-- Stroke 1: Left diagonal of the inverted V -->
+        <path d="M300,100 L200,400" 
+              fill="none" 
+              stroke="red" 
+              stroke-width="3" 
+              marker-end="url(#arrow)" 
+              stroke-dasharray="5,5" />
+        <text x="310" y="120" fill="red" font-size="16" font-weight="bold">1</text>
+
+        <!-- Stroke 2: Right diagonal of the inverted V -->
+        <path d="M300,100 L400,400" 
+              fill="none" 
+              stroke="green" 
+              stroke-width="3" 
+              marker-end="url(#arrow)" 
+              stroke-dasharray="5,5" />
+        <text x="280" y="120" fill="green" font-size="16" font-weight="bold">2</text>
+
+        <!-- Stroke 3: Crossbar that splits into two diagonal branches -->
+        <g id="stroke3">
+          <!-- Horizontal segment -->
+          <path d="M230,280 L300,280" 
+                fill="none" 
+                stroke="blue" 
+                stroke-width="3" 
+                marker-end="url(#arrow)" 
+                stroke-dasharray="5,5" />
+          <!-- Upper diagonal branch -->
+          <path d="M300,280 L350,240" 
+                fill="none" 
+                stroke="blue" 
+                stroke-width="3" 
+                marker-end="url(#arrow)" 
+                stroke-dasharray="5,5" />
+          <!-- Lower diagonal branch -->
+          <path d="M300,280 L350,320" 
+                fill="none" 
+                stroke="blue" 
+                stroke-width="3" 
+                marker-end="url(#arrow)" 
+                stroke-dasharray="5,5" />
+        </g>
+        <text x="235" y="265" fill="blue" font-size="16" font-weight="bold">3</text>
+      </svg>
+
+      <!-- A simple list describing the stroke order -->
+      <ul id="strokeList">
+        <li><strong>Stroke 1</strong> (red): Starts at the top center and moves down to the left.</li>
+        <li><strong>Stroke 2</strong> (green): Also starts at the top center and moves down to the right.</li>
+        <li><strong>Stroke 3</strong> (blue): Begins on the left, moves horizontally to the right, then splits into two diagonal branches (upper and lower) to form the crossbar.</li>
+      </ul>
+    </div>
+  </body>
+</html>

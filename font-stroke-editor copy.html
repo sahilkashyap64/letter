@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Font Letter Stroke Editor</title>
+    <!-- Load opentype.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+      #toolbar {
+        padding: 10px;
+        background: #f0f0f0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      #toolbar label {
+        margin-right: 10px;
+      }
+      #displayArea {
+        text-align: center;
+        margin: 10px;
+      }
+      #letterSVG {
+        border: 1px solid #ccc;
+        background: #fff;
+      }
+      #strokeOrderControls {
+        margin: 10px;
+      }
+      #strokeOrderControls ul {
+        list-style: none;
+        padding: 0;
+      }
+      #strokeOrderControls li {
+        padding: 5px;
+        margin: 5px 0;
+        background: #eee;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      button {
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Toolbar for font selection, letter input, and generation -->
+    <div id="toolbar">
+      <label>
+        Letter:
+        <input id="letterInput" type="text" maxlength="1" placeholder="Enter letter">
+      </label>
+      <label>
+        Font:
+        <select id="fontSelect">
+          <!-- Options will be added from default fonts -->
+        </select>
+      </label>
+      <label>
+        Upload Font:
+        <input id="fontUpload" type="file" accept=".ttf,.otf">
+      </label>
+      <button id="generateButton">Generate Letter Template</button>
+    </div>
+
+    <!-- SVG Display Area -->
+    <div id="displayArea">
+      <svg id="letterSVG" width="600" height="600" viewBox="0 0 600 600"></svg>
+    </div>
+
+    <!-- Stroke Order Controls -->
+    <div id="strokeOrderControls">
+      <h3>Stroke Order</h3>
+      <ul id="strokeList"></ul>
+    </div>
+
+    <!-- Export Button -->
+    <div style="margin:10px;">
+      <button id="exportButton">Export Stroke Data JSON</button>
+    </div>
+
+    <script>
+      /***********************
+       * Global Variables
+       ***********************/
+      // Default fonts to load (using Google Fonts raw links)
+      const defaultFonts = [
+        {
+          name: "English",
+          url: "https://github.com/google/fonts/blob/main/ofl/roboto/Roboto-Regular.ttf?raw=true"
+        },
+        {
+          name: "Hindi",
+          url: "https://github.com/google/fonts/blob/main/ofl/lohitdevanagari/Lohit-Devanagari.ttf?raw=true"
+        },
+        {
+          name: "Arabic",
+          url: "https://github.com/google/fonts/blob/main/ofl/amiri/Amiri-Regular.ttf?raw=true"
+        }
+      ];
+      // Object to hold loaded fonts (by name)
+      const loadedFonts = {};
+      // Colors to use for strokes (cycled if more strokes exist)
+      const strokeColors = ["red", "green", "blue", "orange", "purple", "brown", "magenta", "cyan"];
+
+      // Global variables for the current letter template
+      let currentLetter = "";
+      // strokesData will be an array of stroke objects, each with:
+      // { d: (path data string), points: [ {X, Y, ID} ], color: (string) }
+      let strokesData = [];
+
+      /***********************
+       * Utility Functions
+       ***********************/
+      // Splits an SVG path data string into segments based on the "M" command.
+      function splitPathData(d) {
+        // Split on an uppercase M that starts a segment.
+        // The regex (?=M) is a positive lookahead: it splits but keeps the "M".
+        const segments = d.split(/(?=M)/);
+        return segments.filter(seg => seg.trim().length > 0);
+      }
+
+      // Given a path data segment and a stroke ID, create a temporary SVG path element,
+      // sample numSamples points along its length, and return an array of points.
+      function samplePathPoints(pathData, strokeID, numSamples = 50) {
+        // Create a temporary SVG element (offscreen)
+        const tempSVG = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        // Create a temporary path element
+        const tempPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        tempPath.setAttribute("d", pathData);
+        // Append to temporary SVG
+        tempSVG.appendChild(tempPath);
+        // The path must be in the DOM for getTotalLength() to work.
+        document.body.appendChild(tempSVG);
+        const totalLength = tempPath.getTotalLength();
+        const points = [];
+        for (let i = 0; i <= numSamples; i++) {
+          const pt = tempPath.getPointAtLength((i / numSamples) * totalLength);
+          points.push({ X: pt.x, Y: pt.y, ID: strokeID });
+        }
+        // Clean up the temporary SVG
+        document.body.removeChild(tempSVG);
+        return points;
+      }
+
+      // Renders the strokes (in order) into the SVG container and updates the stroke list.
+      function renderStrokes() {
+        const svg = document.getElementById("letterSVG");
+        // Clear previous contents
+        svg.innerHTML = "";
+        // For each stroke, add a <path> element and a <text> label
+        strokesData.forEach((stroke, index) => {
+          // Create path element for the stroke
+          const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          pathEl.setAttribute("d", stroke.d);
+          pathEl.setAttribute("fill", "none");
+          pathEl.setAttribute("stroke", stroke.color);
+          pathEl.setAttribute("stroke-width", "2");
+          svg.appendChild(pathEl);
+          
+          // Get a label position – use the first sampled point (if exists)
+          let labelX = 0, labelY = 0;
+          if (stroke.points && stroke.points.length > 0) {
+            labelX = stroke.points[0].X;
+            labelY = stroke.points[0].Y;
+          }
+          // Create text element for stroke number
+          const textEl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          textEl.textContent = (index + 1).toString();
+          textEl.setAttribute("x", labelX + 5); // offset a bit
+          textEl.setAttribute("y", labelY - 5);
+          textEl.setAttribute("fill", stroke.color);
+          textEl.setAttribute("font-size", "16");
+          textEl.setAttribute("font-weight", "bold");
+          svg.appendChild(textEl);
+        });
+        updateStrokeList();
+      }
+
+      // Updates the stroke order list (in the HTML list below the SVG)
+      function updateStrokeList() {
+        const list = document.getElementById("strokeList");
+        list.innerHTML = "";
+        strokesData.forEach((stroke, index) => {
+          const li = document.createElement("li");
+          li.textContent = "Stroke " + (index + 1);
+          
+          // Create Up button (if not first)
+          if (index > 0) {
+            const upBtn = document.createElement("button");
+            upBtn.textContent = "↑";
+            upBtn.addEventListener("click", () => {
+              // Swap with previous stroke
+              [strokesData[index - 1], strokesData[index]] = [strokesData[index], strokesData[index - 1]];
+              renderStrokes();
+            });
+            li.appendChild(upBtn);
+          }
+          // Create Down button (if not last)
+          if (index < strokesData.length - 1) {
+            const downBtn = document.createElement("button");
+            downBtn.textContent = "↓";
+            downBtn.addEventListener("click", () => {
+              // Swap with next stroke
+              [strokesData[index], strokesData[index + 1]] = [strokesData[index + 1], strokesData[index]];
+              renderStrokes();
+            });
+            li.appendChild(downBtn);
+          }
+          list.appendChild(li);
+        });
+      }
+
+      // Exports the current stroke data as JSON.
+      function exportData() {
+        // Create an object that mimics your expected format:
+        // [
+        //   {
+        //     "name": <letter>,
+        //     "gestures": [
+        //         [ { "X":..., "Y":..., "ID":... }, ... ],  // stroke 1
+        //         [ { "X":..., "Y":..., "ID":... }, ... ],  // stroke 2
+        //         ...
+        //     ]
+        //   }
+        // ]
+        const exportObj = [{
+          name: currentLetter,
+          gestures: strokesData.map(stroke => stroke.points)
+        }];
+        const jsonStr = JSON.stringify(exportObj, null, 2);
+        console.log("Exported Stroke Data:\n", jsonStr);
+        // Trigger download
+        const blob = new Blob([jsonStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "strokeData.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      /***********************
+       * Font Loading Functions
+       ***********************/
+      // Populate the <select> with default fonts and load them.
+      function loadDefaultFonts() {
+        const fontSelect = document.getElementById("fontSelect");
+        defaultFonts.forEach(font => {
+          // Add option to the select
+          const opt = document.createElement("option");
+          opt.value = font.name;
+          opt.textContent = font.name;
+          fontSelect.appendChild(opt);
+          // Load the font using opentype.js
+          opentype.load(font.url, function(err, loadedFont) {
+            if (err) {
+              console.error("Could not load font " + font.name + ": " + err);
+            } else {
+              loadedFonts[font.name] = loadedFont;
+              console.log("Loaded font:", font.name);
+            }
+          });
+        });
+      }
+
+      // Handle custom font upload.
+      document.getElementById("fontUpload").addEventListener("change", function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          try {
+            const font = opentype.parse(e.target.result);
+            const name = file.name.replace(/\.[^/.]+$/, ""); // remove extension
+            loadedFonts[name] = font;
+            // Add to font select if not already present
+            const fontSelect = document.getElementById("fontSelect");
+            let exists = false;
+            for (let i = 0; i < fontSelect.options.length; i++) {
+              if (fontSelect.options[i].value === name) {
+                exists = true;
+                break;
+              }
+            }
+            if (!exists) {
+              const opt = document.createElement("option");
+              opt.value = name;
+              opt.textContent = name;
+              fontSelect.appendChild(opt);
+            }
+            fontSelect.value = name;
+            alert("Loaded font: " + name);
+          } catch (err) {
+            alert("Error parsing font file.");
+            console.error(err);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+
+      /***********************
+       * Letter Template Generation
+       ***********************/
+      function generateLetterTemplate() {
+        const letterInput = document.getElementById("letterInput").value.trim();
+        if (letterInput === "") {
+          alert("Please enter a letter.");
+          return;
+        }
+        currentLetter = letterInput;
+        const fontSelect = document.getElementById("fontSelect");
+        const fontName = fontSelect.value;
+        const font = loadedFonts[fontName];
+        if (!font) {
+          alert("Font not loaded yet. Please try again later.");
+          return;
+        }
+        // Adjust fontSize and positioning as needed.
+        const fontSize = 200;
+        // Get the glyph for the letter.
+        const glyph = font.charToGlyph(letterInput);
+        // You can adjust the x,y offset if desired. Here we use (0, fontSize)
+        const path = glyph.getPath(0, fontSize, fontSize);
+        const d = path.toPathData();
+        // Split the path into segments (heuristically, by "M" command)
+        const segments = splitPathData(d);
+        // Clear any previous strokes.
+        strokesData = [];
+        segments.forEach((seg, index) => {
+          // Use a color from our palette (cycling if necessary)
+          const color = strokeColors[index % strokeColors.length];
+          // Sample points for this stroke
+          const points = samplePathPoints(seg, index);
+          // Create a stroke object
+          strokesData.push({
+            d: seg,
+            points: points,
+            color: color
+          });
+        });
+        renderStrokes();
+      }
+
+      /***********************
+       * Event Listeners
+       ***********************/
+      document.getElementById("generateButton").addEventListener("click", generateLetterTemplate);
+      document.getElementById("exportButton").addEventListener("click", exportData);
+
+      // Load default fonts on page load.
+      window.addEventListener("DOMContentLoaded", loadDefaultFonts);
+    </script>
+  </body>
+</html>

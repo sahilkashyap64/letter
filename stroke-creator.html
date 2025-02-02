@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Stroke Data Creator</title>
+  <style>
+    /* Basic CSS to layout the toolbar and canvas */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    #toolbar {
+      background: #f0f0f0;
+      padding: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    #canvasContainer {
+      position: relative;
+      width: 100%;
+      height: calc(100% - 50px); /* leaving space for the toolbar */
+      background: #fff;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      background: #fff;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <button id="clearBtn">Clear Canvas</button>
+    <button id="exportBtn">Export Stroke Data</button>
+    <span>Draw your letter (or shape) below:</span>
+  </div>
+  <div id="canvasContainer">
+    <canvas id="drawingCanvas"></canvas>
+  </div>
+
+  <script>
+    // --- Basic Setup ---
+    const canvas = document.getElementById('drawingCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Resize the canvas to fill its container.
+    function resizeCanvas() {
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // --- Stroke Data Variables ---
+    // strokes: an array of strokes; each stroke is an array of point objects {X, Y, ID}
+    let strokes = [];
+    let currentStroke = [];
+    let drawing = false;
+    let strokeId = 0;
+
+    // --- Helper: Get mouse/touch position relative to canvas ---
+    function getPos(evt) {
+      const rect = canvas.getBoundingClientRect();
+      let x, y;
+      if (evt.touches) { // touch event
+        x = evt.touches[0].clientX - rect.left;
+        y = evt.touches[0].clientY - rect.top;
+      } else { // mouse event
+        x = evt.clientX - rect.left;
+        y = evt.clientY - rect.top;
+      }
+      return { x, y };
+    }
+
+    // --- Drawing Event Handlers ---
+    function startDrawing(evt) {
+      drawing = true;
+      currentStroke = [];
+      const pos = getPos(evt);
+      currentStroke.push({ X: pos.x, Y: pos.y, ID: strokeId });
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      evt.preventDefault();
+    }
+
+    function draw(evt) {
+      if (!drawing) return;
+      const pos = getPos(evt);
+      currentStroke.push({ X: pos.x, Y: pos.y, ID: strokeId });
+      // Draw a simple line to the new point.
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      evt.preventDefault();
+    }
+
+    function stopDrawing(evt) {
+      if (!drawing) return;
+      drawing = false;
+      strokes.push(currentStroke);
+      strokeId++;
+      evt.preventDefault();
+    }
+
+    // --- Mouse Events ---
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+
+    // --- Touch Events ---
+    canvas.addEventListener('touchstart', startDrawing);
+    canvas.addEventListener('touchmove', draw);
+    canvas.addEventListener('touchend', stopDrawing);
+
+    // --- Toolbar Button Functionality ---
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      // Clear canvas and reset stroke data.
+      strokes = [];
+      currentStroke = [];
+      strokeId = 0;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      // Wrap the strokes in an object that matches the expected format.
+      // For example, your letter recognition system expects:
+      // [
+      //   {
+      //     "name": "CustomLetter",
+      //     "gestures": [
+      //       [ { "X":..., "Y":..., "ID":... }, ... ],  // Stroke 1
+      //       [ { "X":..., "Y":..., "ID":... }, ... ],  // Stroke 2
+      //       ...
+      //     ]
+      //   }
+      // ]
+      const data = [{
+        name: "CustomLetter",
+        gestures: strokes
+      }];
+
+      // Format JSON with indentation.
+      const jsonStr = JSON.stringify(data, null, 2);
+      console.log("Exported Stroke Data:\n", jsonStr);
+
+      // Create a temporary download link.
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "strokeData.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>
