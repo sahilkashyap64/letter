@@ -1,182 +1,106 @@
 <!DOCTYPE html>
 <html>
-  <head>
+<head>
     <meta charset="UTF-8">
     <title>Font Skeleton Extractor</title>
-    <!-- Load SVG.js for drawing -->
     <script src="https://cdn.jsdelivr.net/npm/@svgdotjs/svg.js@3.1/dist/svg.min.js"></script>
-    <!-- Load Skeleton-Tracing-JS for skeleton extraction -->
     <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
-    <!-- Load opentype.js for font parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
     <style>
-      body {
-        font-family: sans-serif;
-        margin: 20px;
-        background: #222;
-        color: #eee;
-      }
-      #toolbar {
-        margin-bottom: 10px;
-      }
-      #originalSVG, #skeletonSVG {
-        border: 1px solid #555;
-        width: 600px;
-        height: 600px;
-        margin-bottom: 10px;
-      }
-      /* Hide the offscreen canvas */
-      #offscreenCanvas {
-        display: none;
-      }
-      textarea {
-        width: 600px;
-        height: 200px;
-      }
+        body { font-family: sans-serif; margin: 20px; background: #222; color: #eee; }
+        #toolbar { margin-bottom: 10px; }
+        .svg-container { display: flex; flex-wrap: wrap; gap: 10px; }
+        .svg-box { border: 1px solid #555; width: 300px; height: 300px; }
+        #offscreenCanvas { display: none; }
+        textarea { width: 100%; height: 200px; }
     </style>
-  </head>
-  <body>
+</head>
+<body>
     <h1>Font Skeleton Extractor</h1>
     <div id="toolbar">
-      <label>
-        Letter:
-        <input id="letterInput" type="text" maxlength="1" placeholder="Enter letter" value="A">
-      </label>
-      <button id="generateButton">Generate Outline & Skeleton</button>
-      <button id="exportButton">Export Skeleton JSON</button>
+        <label>
+            Letters:
+            <input id="letterInput" type="text" placeholder="Enter letters" value="ABC">
+        </label>
+        <button id="generateButton">Generate Skeletons</button>
+        <button id="exportButton">Export JSON</button>
     </div>
-    <!-- Container for the expanded (filled) letter outline -->
-    <div id="originalSVG"></div>
-    <!-- Container for the extracted skeleton visualization -->
-    <div id="skeletonSVG"></div>
-    <!-- Textarea to show exported JSON data -->
+    <div class="svg-container" id="svgContainer"></div>
     <textarea id="jsonOutput" readonly></textarea>
-    <!-- Offscreen canvas used for rasterizing the SVG -->
-    <canvas id="offscreenCanvas" width="600" height="600"></canvas>
+    <canvas id="offscreenCanvas" width="300" height="300"></canvas>
     
     <script>
-      // Global variables
-      let currentSkeleton = null;
-      let currentLetter = "";
-      let font;
-      // Adjust the font URL as needed (make sure the file is available)
-      const fontUrl = "./Roboto[wdth,wght].ttf";
-      
-      // Load the font using opentype.js
-      opentype.load(fontUrl, function(err, loadedFont) {
-        if(err) {
-          console.error("Font load error:", err);
-        } else {
-          font = loadedFont;
-          console.log("Font loaded.");
-        }
-      });
-      
-      // Create the letter outline using SVG.js
-      function createLetterOutline(letter) {
-        currentLetter = letter;
-        // Clear any previous drawing
-        document.getElementById("originalSVG").innerHTML = "";
-        // Create an SVG drawing in the container
-        const draw = SVG().addTo('#originalSVG').size(600,600);
-        // Get the glyph for the letter
-        const glyph = font.charToGlyph(letter);
-        const fontSize = 500;
-        // Obtain the SVG path data for the glyph; here we position it at (50,550)
-        const pathData = glyph.getPath(50, 550, fontSize).toPathData();
-        // Draw the glyph as a filled shape with a thick stroke so that it becomes an expanded (binary) area.
-        // Using a white fill and white stroke ensures the entire letter is rendered as white.
-        draw.path(pathData)
-            .fill('white')
-            .stroke({ color: "white", width: 10, linecap: "round", linejoin: "round" });
-        // Allow a short delay for the SVG to render before processing
-        setTimeout(processSkeleton, 200);
-      }
-      
-      // Render the SVG to an offscreen canvas
-      function renderSVGToCanvas(svgElement, canvasElement, callback) {
-        const svgString = svgElement.outerHTML;
-        const blob = new Blob([svgString], {type: "image/svg+xml;charset=utf-8"});
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        img.onload = function() {
-          const ctx = canvasElement.getContext("2d");
-          // Fill the canvas with black (background)
-          ctx.fillStyle = "black";
-          ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-          // Draw the SVG image (the white letter) onto the canvas
-          ctx.drawImage(img, 0, 0, canvasElement.width, canvasElement.height);
-          URL.revokeObjectURL(url);
-          callback();
-        };
-        img.src = url;
-      }
-      
-      // Extract the skeleton from the canvas using Skeleton-Tracing-JS
-      function extractSkeleton(canvasElement) {
-        // TraceSkeleton.fromCanvas returns an object with a property "polylines"
-        // that is an array of centerline strokes (each stroke is an array of [x, y] pairs).
-        const skeleton = TraceSkeleton.fromCanvas(canvasElement);
-        return skeleton;
-      }
-      
-      // Visualize the skeleton by inserting its generated SVG into a container
-      function visualizeSkeleton(skeleton, containerElement) {
-        const options = {
-          scale: 1,
-          strokeWidth: 2,
-          keypoints: true
-        };
-        const svgString = TraceSkeleton.visualize(skeleton, options);
-        containerElement.innerHTML = svgString;
-      }
-      
-      // Full pipeline: render the letter SVG onto the canvas, extract its skeleton, and display it.
-      function processSkeleton() {
-        const originalSVGElement = document.getElementById("originalSVG").querySelector("svg");
-        const offscreenCanvas = document.getElementById("offscreenCanvas");
-        renderSVGToCanvas(originalSVGElement, offscreenCanvas, function() {
-          const skeleton = extractSkeleton(offscreenCanvas);
-          currentSkeleton = skeleton;
-          visualizeSkeleton(skeleton, document.getElementById("skeletonSVG"));
-          console.log("Skeleton extracted:", skeleton.polylines);
+        let font;
+        const fontUrl = "./Roboto[wdth,wght].ttf";
+        opentype.load(fontUrl, function(err, loadedFont) {
+            if (err) { console.error("Font load error:", err); }
+            else { font = loadedFont; console.log("Font loaded."); }
         });
-      }
-      
-      // Export the skeleton data as JSON in the desired format.
-      // The output will have the letter name and an array "gestures", where each gesture is an array of points with X, Y, and ID.
-      function exportSkeletonData() {
-        if (!currentSkeleton) {
-          alert("No skeleton data available. Please generate the letter first.");
-          return;
+
+        function createLetterOutline(letter, container) {
+            const draw = SVG().addTo(container).size(300, 300);
+            const glyph = font.charToGlyph(letter);
+            const pathData = glyph.getPath(50, 250, 200).toPathData();
+            draw.path(pathData).fill('white').stroke({ color: "white", width: 5, linecap: "round", linejoin: "round" });
+            setTimeout(() => processSkeleton(draw.node, container), 200);
         }
-        const gestures = currentSkeleton.polylines.map(polyline =>
-          polyline.map(pt => ({ X: pt[0], Y: pt[1], ID: 0 }))
-        );
-        const exportObj = {
-          name: currentLetter.toLowerCase(),  // e.g., "a"
-          gestures: gestures
-        };
-        const jsonStr = JSON.stringify(exportObj, null, 2);
-        document.getElementById("jsonOutput").value = jsonStr;
-        console.log("Exported JSON:", jsonStr);
-      }
-      
-      // Event listeners
-      document.getElementById("generateButton").addEventListener("click", function() {
-        const letter = document.getElementById("letterInput").value.trim();
-        if (letter === "") {
-          alert("Please enter a letter.");
-          return;
+
+        function processSkeleton(svgElement, container) {
+            const offscreenCanvas = document.getElementById("offscreenCanvas");
+            renderSVGToCanvas(svgElement, offscreenCanvas, function() {
+                const skeleton = extractSkeleton(offscreenCanvas);
+                visualizeSkeleton(skeleton, container);
+            });
         }
-        if (!font) {
-          alert("Font is not loaded yet.");
-          return;
+
+        function renderSVGToCanvas(svgElement, canvasElement, callback) {
+            const svgString = svgElement.outerHTML;
+            const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = function() {
+                const ctx = canvasElement.getContext("2d");
+                ctx.fillStyle = "black";
+                ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                ctx.drawImage(img, 0, 0, canvasElement.width, canvasElement.height);
+                URL.revokeObjectURL(url);
+                callback();
+            };
+            img.src = url;
         }
-        createLetterOutline(letter);
-      });
-      
-      document.getElementById("exportButton").addEventListener("click", exportSkeletonData);
+
+        function extractSkeleton(canvasElement) {
+            return TraceSkeleton.fromCanvas(canvasElement);
+        }
+
+        function visualizeSkeleton(skeleton, container) {
+            const svgString = TraceSkeleton.visualize(skeleton, { scale: 1, strokeWidth: 2, keypoints: true });
+            container.innerHTML = svgString;
+        }
+
+        function exportSkeletonData() {
+            const skeletons = [];
+            document.querySelectorAll('.svg-box').forEach((box, index) => {
+                const letter = document.getElementById("letterInput").value[index];
+                const skeleton = TraceSkeleton.fromCanvas(document.getElementById("offscreenCanvas"));
+                skeletons.push({ name: letter.toLowerCase(), gestures: skeleton.polylines.map(poly => poly.map(pt => ({ X: pt[0], Y: pt[1], ID: 0 }))) });
+            });
+            document.getElementById("jsonOutput").value = JSON.stringify(skeletons, null, 2);
+        }
+
+        document.getElementById("generateButton").addEventListener("click", function() {
+            const letters = document.getElementById("letterInput").value.toUpperCase().split("");
+            const container = document.getElementById("svgContainer");
+            container.innerHTML = "";
+            letters.forEach(letter => {
+                const box = document.createElement("div");
+                box.className = "svg-box";
+                container.appendChild(box);
+                createLetterOutline(letter, box);
+            });
+        });
+
+        document.getElementById("exportButton").addEventListener("click", exportSkeletonData);
     </script>
-  </body>
+</body>
 </html>
