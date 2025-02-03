@@ -41,7 +41,7 @@
             const draw = SVG().addTo(container).size(300, 300);
             const glyph = font.charToGlyph(letter);
             const pathData = glyph.getPath(50, 250, 200).toPathData();
-            draw.path(pathData).fill('white').stroke({ color: "white", width: 5, linecap: "round", linejoin: "round" });
+            draw.path(pathData).fill('white');
             setTimeout(() => processSkeleton(draw.node, container), 200);
         }
 
