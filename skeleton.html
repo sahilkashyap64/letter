@@ -73,49 +73,10 @@
             return TraceSkeleton.fromCanvas(canvasElement);
         }
 
-        function smoothPolyline(polyline, iterations = 3) {
-    if (polyline.length < 3) return polyline; // Cannot smooth a line with 2 or fewer points
-
-    for (let i = 0; i < iterations; i++) {
-        let newPolyline = [polyline[0]]; // Keep first point
-        for (let j = 1; j < polyline.length - 1; j++) {
-            let prev = polyline[j - 1];
-            let curr = polyline[j];
-            let next = polyline[j + 1];
-
-            // Compute new points by averaging neighbors
-            let newX = (prev[0] + curr[0] + next[0]) / 3;
-            let newY = (prev[1] + curr[1] + next[1]) / 3;
-            newPolyline.push([newX, newY]);
+        function visualizeSkeleton(skeleton, container) {
+            const svgString = TraceSkeleton.visualize(skeleton, { scale: 1, strokeWidth: 2, keypoints: true });
+            container.innerHTML = svgString;
         }
-        newPolyline.push(polyline[polyline.length - 1]); // Keep last point
-        polyline = newPolyline;
-    }
-    return polyline;
-}
-
-function visualizeSkeleton(skeleton, container) {
-    let svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("width", "300");
-    svg.setAttribute("height", "300");
-    svg.setAttribute("viewBox", "0 0 300 300");
-
-    skeleton.polylines.forEach(polyline => {
-        let smoothed = smoothPolyline(polyline);
-        let pathString = smoothed.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]},${p[1]}`).join(' ');
-
-        let path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", pathString);
-        path.setAttribute("stroke", "white");
-        path.setAttribute("fill", "none");
-        path.setAttribute("stroke-width", "1.5");
-        svg.appendChild(path);
-    });
-
-    container.innerHTML = "";
-    container.appendChild(svg);
-}
-
 
         function exportSkeletonData() {
             const skeletons = [];
