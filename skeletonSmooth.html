@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Font Skeleton Extractor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@svgdotjs/svg.js@3.1/dist/svg.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background: #222; color: #eee; }
+        #toolbar { margin-bottom: 10px; }
+        .svg-container { display: flex; flex-wrap: wrap; gap: 10px; }
+        .svg-box { border: 1px solid #555; width: 300px; height: 300px; }
+        #offscreenCanvas { display: none; }
+        textarea { width: 100%; height: 200px; }
+    </style>
+</head>
+<body>
+    <h1>Font Skeleton Extractor</h1>
+    <div id="toolbar">
+        <label>
+            Letters:
+            <input id="letterInput" type="text" placeholder="Enter letters" value="ABC">
+        </label>
+        <button id="generateButton">Generate Skeletons</button>
+        <button id="exportButton">Export JSON</button>
+    </div>
+    <div class="svg-container" id="svgContainer"></div>
+    <textarea id="jsonOutput" readonly></textarea>
+    <canvas id="offscreenCanvas" width="300" height="300"></canvas>
+    
+    <script>
+        let font;
+        const fontUrl = "./Roboto[wdth,wght].ttf";
+        opentype.load(fontUrl, function(err, loadedFont) {
+            if (err) { console.error("Font load error:", err); }
+            else { font = loadedFont; console.log("Font loaded.",font); }
+        });
+
+        function createLetterOutline(letter, container) {
+            const draw = SVG().addTo(container).size(300, 300);
+            const glyph = font.charToGlyph(letter);
+            const pathData = glyph.getPath(50, 250, 200).toPathData();
+            draw.path(pathData).fill('white');
+            setTimeout(() => processSkeleton(draw.node, container), 200);
+        }
+
+        function processSkeleton(svgElement, container) {
+            const offscreenCanvas = document.getElementById("offscreenCanvas");
+            renderSVGToCanvas(svgElement, offscreenCanvas, function() {
+                const skeleton = extractSkeleton(offscreenCanvas);
+                visualizeSkeleton(skeleton, container);
+            });
+        }
+
+        function renderSVGToCanvas(svgElement, canvasElement, callback) {
+            const svgString = svgElement.outerHTML;
+            const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = function() {
+                const ctx = canvasElement.getContext("2d");
+                ctx.fillStyle = "black";
+                ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                ctx.drawImage(img, 0, 0, canvasElement.width, canvasElement.height);
+                URL.revokeObjectURL(url);
+                callback();
+            };
+            img.src = url;
+        }
+
+        function extractSkeleton(canvasElement) {
+            return TraceSkeleton.fromCanvas(canvasElement);
+        }
+
+        function smoothPolyline(polyline, iterations = 3) {
+    if (polyline.length < 3) return polyline; // Cannot smooth a line with 2 or fewer points
+
+    for (let i = 0; i < iterations; i++) {
+        let newPolyline = [polyline[0]]; // Keep first point
+        for (let j = 1; j < polyline.length - 1; j++) {
+            let prev = polyline[j - 1];
+            let curr = polyline[j];
+            let next = polyline[j + 1];
+
+            // Compute new points by averaging neighbors
+            let newX = (prev[0] + curr[0] + next[0]) / 3;
+            let newY = (prev[1] + curr[1] + next[1]) / 3;
+            newPolyline.push([newX, newY]);
+        }
+        newPolyline.push(polyline[polyline.length - 1]); // Keep last point
+        polyline = newPolyline;
+    }
+    return polyline;
+}
+
+function visualizeSkeleton(skeleton, container) {
+    let svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", "300");
+    svg.setAttribute("height", "300");
+    svg.setAttribute("viewBox", "0 0 300 300");
+
+    skeleton.polylines.forEach(polyline => {
+        let smoothed = smoothPolyline(polyline);
+        let pathString = smoothed.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]},${p[1]}`).join(' ');
+
+        let path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathString);
+        path.setAttribute("stroke", "white");
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke-width", "1.5");
+        svg.appendChild(path);
+    });
+
+    container.innerHTML = "";
+    container.appendChild(svg);
+}
+
+
+        function exportSkeletonData() {
+            const skeletons = [];
+            document.querySelectorAll('.svg-box').forEach((box, index) => {
+                const letter = document.getElementById("letterInput").value[index];
+                const skeleton = TraceSkeleton.fromCanvas(document.getElementById("offscreenCanvas"));
+                skeletons.push({ name: letter.toLowerCase(), gestures: skeleton.polylines.map(poly => poly.map(pt => ({ X: pt[0], Y: pt[1], ID: 0 }))) });
+            });
+            document.getElementById("jsonOutput").value = JSON.stringify(skeletons, null, 2);
+        }
+
+        document.getElementById("generateButton").addEventListener("click", function() {
+            const letters = document.getElementById("letterInput").value.toUpperCase().split("");
+            const container = document.getElementById("svgContainer");
+            container.innerHTML = "";
+            letters.forEach(letter => {
+                const box = document.createElement("div");
+                box.className = "svg-box";
+                container.appendChild(box);
+                createLetterOutline(letter, box);
+            });
+        });
+
+        document.getElementById("exportButton").addEventListener("click", exportSkeletonData);
+    </script>
+</body>
+</html>
