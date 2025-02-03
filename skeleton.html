@@ -69,7 +69,7 @@
           font = loadedFont;
           // Once the font is loaded, create the letter outline.
           // (Change the letter below to generate a different glyph.)
-          createLetterOutline("A");
+          createLetterOutline("D");
         }
       });
       
@@ -87,9 +87,9 @@
         // The parameters (50, 550) are chosen to position the letter nicely in 600x600.
         const pathData = glyph.getPath(50, 550, fontSize).toPathData();
         // Draw the glyph’s outline with a thick stroke.
-        // The thick white stroke will act as an "expanded" outline (i.e. a filled area).
+        // Using a white fill and white stroke ensures that the entire letter is a solid shape.
         const letterPath = draw.path(pathData)
-                               .fill('red')
+                               .fill('white')
                                .stroke({ color: "white", width: 10, linecap: "round", linejoin: "round" });
         // Give the drawing a short delay to render before processing.
         setTimeout(processSkeleton, 100);
@@ -105,8 +105,10 @@
         const img = new Image();
         img.onload = function() {
           const ctx = canvasElement.getContext("2d");
-          // Clear the canvas and draw the SVG image.
-          ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+          // Fill the canvas with black to create a proper binary background.
+          ctx.fillStyle = "black";
+          ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+          // Draw the SVG image (the white shape) on top.
           ctx.drawImage(img, 0, 0, canvasElement.width, canvasElement.height);
           URL.revokeObjectURL(url);
           callback();
