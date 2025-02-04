@@ -249,8 +249,8 @@
         strokesData.forEach((stroke, index) => {
           const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
           pathEl.setAttribute("d", stroke.d);
-          pathEl.setAttribute("fill", "none");
-          pathEl.setAttribute("stroke", stroke.color);
+          pathEl.setAttribute("fill", stroke.color);
+          // pathEl.setAttribute("stroke", stroke.color);
           pathEl.setAttribute("stroke-width", "2");
           svg.appendChild(pathEl);
           
@@ -266,7 +266,7 @@
           textEl.setAttribute("fill", stroke.color);
           textEl.setAttribute("font-size", "16");
           textEl.setAttribute("font-weight", "bold");
-          svg.appendChild(textEl);
+          // svg.appendChild(textEl);
         });
         updateStrokeList();
       }
@@ -515,5 +515,8 @@
       document.getElementById("addStrokeButton").addEventListener("click", startAddStrokeMode);
       window.addEventListener("DOMContentLoaded", loadDefaultFonts);
     </script>
+
+<script src="navbar.js"></script>
+<link rel="stylesheet" href="style.css">
   </body>
 </html>

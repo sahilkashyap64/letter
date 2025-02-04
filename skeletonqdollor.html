@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Letter Tracing App with $Q Recognizer</title>
+    <!-- Load SVG.js for vector drawing -->
+    <script src="https://cdn.jsdelivr.net/npm/@svgdotjs/svg.js@3.1/dist/svg.min.js"></script>
+    <!-- Load Skeleton-Tracing-JS for skeleton extraction -->
+    <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
+    <!-- Load opentype.js for font parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+    <!-- Load qdollar.js (the $Q recognizer) -->
+    <script src="./qdollar.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 20px;
+        background: #222;
+        color: #eee;
+      }
+      #toolbar {
+        margin-bottom: 10px;
+      }
+      #templateContainer, #traceCanvas {
+        border: 1px solid #555;
+        width: 600px;
+        height: 600px;
+        margin-bottom: 10px;
+      }
+      #templateContainer {
+        background: #111;
+      }
+      #traceCanvas {
+        background: #dddddd;
+      }
+      textarea {
+        width: 600px;
+        height: 200px;
+      }
+    </style>
+    <script>
+      /***********************
+       * PART 1: Font Skeleton Extraction (Template Generation)
+       ***********************/
+      let currentSkeleton = null;
+      let currentLetter = "";
+      let font;
+      const fontUrl = "./Roboto[wdth,wght].ttf";  // adjust as needed
+
+      // Load the font using opentype.js
+      opentype.load(fontUrl, function(err, loadedFont) {
+        if(err) {
+          console.error("Font load error:", err);
+        } else {
+          font = loadedFont;
+          console.log("Font loaded.");
+        }
+      });
+
+      // Create the letter outline (filled) using SVG.js and extract its skeleton.
+      function createLetterTemplate(letter) {
+        currentLetter = letter;
+        // Clear any previous template
+        document.getElementById("templateContainer").innerHTML = "";
+        // Create an SVG drawing in the template container.
+        const draw = SVG().addTo('#templateContainer').size(600,600);
+        // Get the glyph for the letter.
+        const glyph = font.charToGlyph(letter);
+        const fontSize = 500;
+        // Position the glyph at (50,550) so it fits nicely into 600×600.
+        const pathData = glyph.getPath(50, 550, fontSize).toPathData();
+        // Draw the glyph as a filled shape with a thick stroke.
+        // (A white fill and stroke yield a binary shape for tracing.)
+        draw.path(pathData)
+            .fill('white')
+            .stroke({ color: "white", width: 10, linecap: "round", linejoin: "round" });
+        // Allow a short delay so the SVG is rendered, then extract its skeleton.
+        setTimeout(processTemplateSkeleton, 200);
+      }
+
+      // Render the given SVG element onto an offscreen canvas.
+      function renderSVGToCanvas(svgElement, canvasElement, callback) {
+        const svgString = svgElement.outerHTML;
+        const blob = new Blob([svgString], {type: "image/svg+xml;charset=utf-8"});
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = function() {
+          const ctx = canvasElement.getContext("2d");
+          // Fill the canvas with black.
+          ctx.fillStyle = "black";
+          ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+          // Draw the SVG (the white letter) on top.
+          ctx.drawImage(img, 0, 0, canvasElement.width, canvasElement.height);
+          URL.revokeObjectURL(url);
+          callback();
+        };
+        img.src = url;
+      }
+
+      // Extract the skeleton using Skeleton-Tracing-JS.
+      function extractSkeleton(canvasElement) {
+        return TraceSkeleton.fromCanvas(canvasElement);
+      }
+
+      // Visualize the skeleton (for debugging or reference).
+      function visualizeSkeleton(skeleton, containerElement) {
+        const options = {
+          scale: 1,
+          strokeWidth: 2,
+          keypoints: true
+        };
+        const svgString = TraceSkeleton.visualize(skeleton, options);
+        containerElement.innerHTML = svgString;
+      }
+
+      // Process the template: render the SVG from the template container to an offscreen canvas,
+      // extract its skeleton, and (optionally) display it.
+      function processTemplateSkeleton() {
+        const templateSVG = document.getElementById("templateContainer").querySelector("svg");
+        const offscreenCanvas = document.getElementById("offscreenCanvas");
+        renderSVGToCanvas(templateSVG, offscreenCanvas, function() {
+          const skeleton = extractSkeleton(offscreenCanvas);
+          currentSkeleton = skeleton;  // save for later reference if needed
+          console.log("Template skeleton extracted:", skeleton.polylines);
+          // (Optionally) visualize the skeleton in the template container.
+          // visualizeSkeleton(skeleton, document.getElementById("templateContainer"));
+        });
+      }
+
+      /***********************
+       * PART 2: Line Tracing using $Q Recognizer
+       ***********************/
+      // Global variables for tracing (for the trace canvas).
+      let _points = [];  // array to hold points of the current trace
+      let _strokeID = 0;
+      let _isDown = false;
+      let _r;  // instance of QDollarRecognizer
+      let _g;  // trace canvas context
+      let _rc; // trace canvas rectangle (position/dimensions)
+
+      // Initialize the trace canvas and $Q recognizer.
+      function initTraceCanvas() {
+        const canvas = document.getElementById("traceCanvas");
+        _g = canvas.getContext("2d");
+        _g.lineWidth = 3;
+        _g.font = "16px Gentilis"; // make sure this font is loaded
+        _rc = getCanvasRect(canvas);
+        _g.fillStyle = "rgb(255,255,136)";
+        _g.fillRect(0, 0, _rc.width, 20);
+        _isDown = false;
+        _points = [];
+        _strokeID = 0;
+        _r = new QDollarRecognizer();  // create the $Q recognizer instance
+      }
+
+      // Helper: get the bounding rectangle of a canvas on the page.
+      function getCanvasRect(canvas) {
+        var w = canvas.width, h = canvas.height;
+        var cx = canvas.offsetLeft, cy = canvas.offsetTop;
+        while (canvas.offsetParent != null) {
+          canvas = canvas.offsetParent;
+          cx += canvas.offsetLeft;
+          cy += canvas.offsetTop;
+        }
+        return {x: cx, y: cy, width: w, height: h};
+      }
+
+      // Mouse event handlers for the trace canvas.
+      function traceMouseDown(x, y, button) {
+        // Disable text selection.
+        document.onselectstart = function() { return false; };
+        document.onmousedown = function() { return false; };
+        if (button <= 1) {
+          _isDown = true;
+          x -= _rc.x - window.pageXOffset;
+          y -= _rc.y - window.pageYOffset;
+          if (_strokeID === 0) {
+            _points.length = 0;
+            _g.clearRect(0, 0, _rc.width, _rc.height);
+          }
+          _points.push(new Point(x, y, ++_strokeID));
+          drawTraceText("Recording stroke #" + _strokeID + "...");
+          var clr = "rgb(" + rand(0,200) + "," + rand(0,200) + "," + rand(0,200) + ")";
+          _g.strokeStyle = clr;
+          _g.fillStyle = clr;
+          _g.fillRect(x - 4, y - 3, 9, 9);
+        }
+      }
+
+      function traceMouseMove(x, y, button) {
+        if (_isDown) {
+          x -= _rc.x - window.pageXOffset;
+          y -= _rc.y - window.pageYOffset;
+          _points.push(new Point(x, y, _strokeID));
+          drawTraceConnectedPoint(_points.length - 2, _points.length - 1);
+        }
+      }
+
+      function traceMouseUp(x, y, button) {
+        document.onselectstart = function() { return true; };
+        document.onmousedown = function() { return true; };
+        if (button <= 1) {
+          if (_isDown) {
+            _isDown = false;
+            drawTraceText("Stroke #" + _strokeID + " recorded.");
+          }
+        }
+      }
+
+      // Draw a line connecting two points in the trace.
+      function drawTraceConnectedPoint(from, to) {
+        _g.beginPath();
+        _g.moveTo(_points[from].X, _points[from].Y);
+        _g.lineTo(_points[to].X, _points[to].Y);
+        _g.stroke();
+      }
+
+      // Draw status text on the trace canvas.
+      function drawTraceText(str) {
+        _g.fillStyle = "rgb(255,255,136)";
+        _g.fillRect(0, 0, _rc.width, 20);
+        _g.fillStyle = "rgb(0,0,255)";
+        _g.fillText(str, 1, 14);
+      }
+
+      // Returns a random integer between low and high (inclusive).
+      function rand(low, high) {
+        return Math.floor((high - low + 1) * Math.random()) + low;
+      }
+
+      // Recognize the traced gesture using $Q.
+      function recognizeTrace() {
+        if (_points.length < 10) {
+          drawTraceText("Too little input. Please try again.");
+          return;
+        }
+        var result = _r.Recognize(_points);
+        drawTraceText("Result: " + result.Name + " (" + round(result.Score, 2) + ") in " + result.Time + " ms.");
+        console.log("Recognized:", result);
+        _strokeID = 0;  // reset for new gesture
+      }
+
+      // Round a number n to d decimal places.
+      function round(n, d) {
+        d = Math.pow(10, d);
+        return Math.round(n * d) / d;
+      }
+
+      // Export the traced stroke data as JSON.
+      // The JSON format is: { "name": letter, "gestures": [ [ {X, Y, ID}, ... ] ] }
+      function exportTraceJSON() {
+        if (_points.length === 0) {
+          alert("No trace data available.");
+          return;
+        }
+        const gesture = _points.map(pt => ({ X: pt.X, Y: pt.Y, ID: pt.ID }));
+        const exportObj = {
+          name: currentLetter.toLowerCase(),
+          gestures: [ gesture ]
+        };
+        const jsonStr = JSON.stringify(exportObj, null, 2);
+        document.getElementById("jsonOutput").value = jsonStr;
+        console.log("Exported Trace JSON:", jsonStr);
+      }
+
+      // Initialize trace canvas on window load.
+      window.onload = function() {
+        initTraceCanvas();
+      };
+
+      // Attach mouse event handlers to the trace canvas.
+      window.addEventListener("DOMContentLoaded", function() {
+        const canvas = document.getElementById("traceCanvas");
+        canvas.addEventListener("mousedown", function(e) {
+          traceMouseDown(e.clientX, e.clientY, e.button);
+        });
+        canvas.addEventListener("mousemove", function(e) {
+          traceMouseMove(e.clientX, e.clientY, e.button);
+        });
+        canvas.addEventListener("mouseup", function(e) {
+          traceMouseUp(e.clientX, e.clientY, e.button);
+        });
+        // Prevent context menu so that right-click can be used for recognition if desired.
+        canvas.addEventListener("contextmenu", function(e) {
+          e.preventDefault();
+          return false;
+        });
+      });
+      
+      // (Optional) A helper function to clear the trace canvas.
+      function clearTraceCanvas() {
+        const canvas = document.getElementById("traceCanvas");
+        _g.clearRect(0, 0, _rc.width, _rc.height);
+        drawTraceText("Canvas cleared.");
+        _points = [];
+        _strokeID = 0;
+      }
+      
+      // --- End of tracing code ---
+    </script>
+  </head>
+  <body>
+    <h1>Letter Tracing App</h1>
+    <div id="toolbar">
+      <label>
+        Letter:
+        <input id="letterInput" type="text" maxlength="1" value="A">
+      </label>
+      <button onclick="createLetterTemplate(document.getElementById('letterInput').value.trim())">
+        Generate Template
+      </button>
+      <button onclick="clearTraceCanvas()">Clear Trace</button>
+      <button onclick="recognizeTrace()">Recognize Trace</button>
+      <button onclick="exportTraceJSON()">Export Trace JSON</button>
+    </div>
+    <div style="display: flex; gap: 20px;">
+      <!-- Template container showing the extracted skeleton (or simply the filled letter) -->
+      <div id="templateContainer">
+        <h2 style="text-align:center;">Template</h2>
+      </div>
+      <!-- Trace canvas where the user draws -->
+      <canvas id="traceCanvas" width="600" height="600">
+        Your browser does not support the HTML5 canvas element.
+      </canvas>
+    </div>
+    <textarea id="jsonOutput" readonly placeholder="Exported JSON will appear here..."></textarea>
+  </body>
+
+  <script src="navbar.js"></script>
+  <link rel="stylesheet" href="style.css">
+</html>
