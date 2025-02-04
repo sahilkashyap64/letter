@@ -34,7 +34,7 @@
         const fontUrl = "./Roboto[wdth,wght].ttf";
         opentype.load(fontUrl, function(err, loadedFont) {
             if (err) { console.error("Font load error:", err); }
-            else { font = loadedFont; console.log("Font loaded.",font); }
+            else { font = loadedFont; console.log("Font loaded.",f); }
         });
 
         function createLetterOutline(letter, container) {
@@ -102,5 +102,7 @@
 
         document.getElementById("exportButton").addEventListener("click", exportSkeletonData);
     </script>
+    <script src="navbar.js"></script>
+    <link rel="stylesheet" href="style.css">
 </body>
 </html>

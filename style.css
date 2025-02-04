@@ -1,0 +1,29 @@
+#dynamic-navbar {
+    background: #333;
+    padding: 10px;
+}
+
+#dynamic-navbar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    gap: 15px;
+}
+
+#dynamic-navbar li {
+    display: inline;
+}
+
+#dynamic-navbar a {
+    text-decoration: none;
+    color: white;
+    font-weight: bold;
+    padding: 8px 12px;
+    transition: 0.3s;
+}
+
+#dynamic-navbar a:hover, .active {
+    background: #555;
+    border-radius: 5px;
+}
