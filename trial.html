@@ -1,92 +1,150 @@
 <!DOCTYPE html>
-<html>
-  <head>
+<html lang="en">
+<head>
     <meta charset="UTF-8">
-    <title>Stroke Order for Letter A</title>
+    <title>Font Skeleton Extractor with Curve Fitting</title>
+    <script src="https://cdn.jsdelivr.net/npm/@svgdotjs/svg.js@3.1/dist/svg.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
+    <script src="https://soswow.github.io/fit-curve/lib/fit-curve.js"></script>
     <style>
-      body {
-        font-family: sans-serif;
-        margin: 20px;
-      }
-      #strokeOrderControls {
-        margin: 20px;
-      }
-      svg {
-        border: 1px solid #ccc;
-        background: #f9f9f9;
-      }
-      ul {
-        margin-top: 10px;
-        padding-left: 20px;
-      }
-      li {
-        margin-bottom: 5px;
-      }
+        body { font-family: sans-serif; margin: 20px; background: #222; color: #eee; text-align: center; }
+        .svg-container { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .svg-box { border: 1px solid #555; width: 300px; height: 300px; background: white; }
+        #offscreenCanvas { display: none; }
+        textarea { width: 100%; height: 150px; margin-top: 10px; }
     </style>
-  </head>
-  <body>
-    <div id="strokeOrderControls">
-      <h3>Stroke Order for Letter A</h3>
-      <!-- This SVG shows the letter A with stroke order and writing direction -->
-      <svg id="letterSVG" width="600" height="600" viewBox="0 0 600 600">
-        <defs>
-          <!-- Arrow marker used to indicate writing direction -->
-          <marker id="arrow" markerWidth="10" markerHeight="10" refX="0" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L9,3 z" fill="black" />
-          </marker>
-        </defs>
-
-        <!-- Stroke 1: Left diagonal of the inverted V -->
-        <path d="M300,100 L200,400" 
-              fill="none" 
-              stroke="red" 
-              stroke-width="3" 
-              marker-end="url(#arrow)" 
-              stroke-dasharray="5,5" />
-        <text x="310" y="120" fill="red" font-size="16" font-weight="bold">1</text>
-
-        <!-- Stroke 2: Right diagonal of the inverted V -->
-        <path d="M300,100 L400,400" 
-              fill="none" 
-              stroke="green" 
-              stroke-width="3" 
-              marker-end="url(#arrow)" 
-              stroke-dasharray="5,5" />
-        <text x="280" y="120" fill="green" font-size="16" font-weight="bold">2</text>
-
-        <!-- Stroke 3: Crossbar that splits into two diagonal branches -->
-        <g id="stroke3">
-          <!-- Horizontal segment -->
-          <path d="M230,280 L300,280" 
-                fill="none" 
-                stroke="blue" 
-                stroke-width="3" 
-                marker-end="url(#arrow)" 
-                stroke-dasharray="5,5" />
-          <!-- Upper diagonal branch -->
-          <path d="M300,280 L350,240" 
-                fill="none" 
-                stroke="blue" 
-                stroke-width="3" 
-                marker-end="url(#arrow)" 
-                stroke-dasharray="5,5" />
-          <!-- Lower diagonal branch -->
-          <path d="M300,280 L350,320" 
-                fill="none" 
-                stroke="blue" 
-                stroke-width="3" 
-                marker-end="url(#arrow)" 
-                stroke-dasharray="5,5" />
-        </g>
-        <text x="235" y="265" fill="blue" font-size="16" font-weight="bold">3</text>
-      </svg>
-
-      <!-- A simple list describing the stroke order -->
-      <ul id="strokeList">
-        <li><strong>Stroke 1</strong> (red): Starts at the top center and moves down to the left.</li>
-        <li><strong>Stroke 2</strong> (green): Also starts at the top center and moves down to the right.</li>
-        <li><strong>Stroke 3</strong> (blue): Begins on the left, moves horizontally to the right, then splits into two diagonal branches (upper and lower) to form the crossbar.</li>
-      </ul>
+</head>
+<body>
+    <h1>Font Skeleton Extractor with Curve Fitting</h1>
+    <div id="toolbar">
+        <label>
+            Letters: <input id="letterInput" type="text" placeholder="Enter letters" value="ABC">
+        </label>
+        <button id="generateButton">Generate</button>
+        <button id="exportButton">Export JSON</button>
+        <br><br>
+        <label>
+            Curve Fitting Error:
+            <input id="errorInput" type="range" min="1" max="300" value="50"/>
+            <span id="errorValue">50</span>
+        </label>
     </div>
-  </body>
+
+    <div class="svg-container" id="svgContainer"></div>
+    <textarea id="jsonOutput" readonly></textarea>
+    <canvas id="offscreenCanvas" width="300" height="300"></canvas>
+
+    <script>
+        let font;
+        const fontUrl = "./Roboto[wdth,wght].ttf";
+        opentype.load(fontUrl, function(err, loadedFont) {
+            if (err) { console.error("Font load error:", err); }
+            else { font = loadedFont; console.log("Font loaded."); }
+        });
+
+        function createLetterOutline(letter, container) {
+            const draw = SVG().addTo(container).size(300, 300);
+            const glyph = font.charToGlyph(letter);
+            const pathData = glyph.getPath(50, 250, 200).toPathData();
+            draw.path(pathData).fill('white');
+            setTimeout(() => processSkeleton(draw.node, container), 200);
+        }
+
+        function processSkeleton(svgElement, container) {
+            const offscreenCanvas = document.getElementById("offscreenCanvas");
+            renderSVGToCanvas(svgElement, offscreenCanvas, function() {
+                const skeleton = extractSkeleton(offscreenCanvas);
+                visualizeSkeleton(skeleton, container);
+            });
+        }
+
+        function renderSVGToCanvas(svgElement, canvasElement, callback) {
+            const svgString = svgElement.outerHTML;
+            const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = function() {
+                const ctx = canvasElement.getContext("2d");
+                ctx.fillStyle = "black";
+                ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                ctx.drawImage(img, 0, 0, canvasElement.width, canvasElement.height);
+                URL.revokeObjectURL(url);
+                callback();
+            };
+            img.src = url;
+        }
+
+        function extractSkeleton(canvasElement) {
+            return TraceSkeleton.fromCanvas(canvasElement);
+        }
+
+        function fitCurveToPolyline(polyline, error) {
+            if (polyline.length < 3) return polyline; // Avoid trying to fit small paths
+
+            const bezierCurves = fitCurve(polyline, error);
+            return bezierCurves.map(bezier => {
+                const [p0, p1, p2, p3] = bezier;
+                return `C${p1[0]},${p1[1]} ${p2[0]},${p2[1]} ${p3[0]},${p3[1]}`;
+            }).join(" ");
+        }
+
+        function visualizeSkeleton(skeleton, container) {
+            const error = parseFloat(document.getElementById("errorInput").value);
+            let svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("width", "300");
+            svg.setAttribute("height", "300");
+            svg.setAttribute("viewBox", "0 0 300 300");
+
+            skeleton.polylines.forEach(polyline => {
+                const pathString = fitCurveToPolyline(polyline, error);
+                let path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("d", `M${polyline[0][0]},${polyline[0][1]} ${pathString}`);
+                path.setAttribute("stroke", "black");
+                path.setAttribute("fill", "none");
+                path.setAttribute("stroke-width", "2");
+                svg.appendChild(path);
+            });
+
+            container.innerHTML = "";
+            container.appendChild(svg);
+        }
+
+        function exportSkeletonData() {
+            const skeletons = [];
+            document.querySelectorAll('.svg-box').forEach((box, index) => {
+                const letter = document.getElementById("letterInput").value[index];
+                const skeleton = TraceSkeleton.fromCanvas(document.getElementById("offscreenCanvas"));
+                skeletons.push({ name: letter.toLowerCase(), gestures: skeleton.polylines.map(poly => poly.map(pt => ({ X: pt[0], Y: pt[1], ID: 0 }))) });
+            });
+            document.getElementById("jsonOutput").value = JSON.stringify(skeletons, null, 2);
+        }
+
+        document.getElementById("generateButton").addEventListener("click", function() {
+            const letters = document.getElementById("letterInput").value.toUpperCase().split("");
+            const container = document.getElementById("svgContainer");
+            container.innerHTML = "";
+            letters.forEach(letter => {
+                const box = document.createElement("div");
+                box.className = "svg-box";
+                container.appendChild(box);
+                createLetterOutline(letter, box);
+            });
+        });
+
+        document.getElementById("exportButton").addEventListener("click", exportSkeletonData);
+
+        document.getElementById("errorInput").addEventListener("input", function() {
+            document.getElementById("errorValue").innerText = this.value;
+            document.querySelectorAll('.svg-box').forEach(box => {
+                if (box.children.length > 0) {
+                    processSkeleton(box.children[0], box);
+                }
+            });
+        });
+    </script>
+
+<script src="navbar.js"></script>
+<link rel="stylesheet" href="style.css">
+</body>
 </html>
