@@ -88,20 +88,10 @@
       /***********************
        * Global Variables
        ***********************/
-      const defaultFonts = [
-        {
-          name: "English",
-          // Google Fonts link (raw TTF in GitHub)
-          url: "https://github.com/google/fonts/blob/main/ofl/roboto/Roboto-Regular.ttf?raw=true"
-        },
-        {
-          name: "Hindi",
-          url: "https://github.com/google/fonts/blob/main/ofl/lohitdevanagari/Lohit-Devanagari.ttf?raw=true"
-        },
-        {
-          name: "Arabic",
-          url: "https://github.com/google/fonts/blob/main/ofl/amiri/Amiri-Regular.ttf?raw=true"
-        }
+       const defaultFonts = [
+        { name: "English", url: "./Roboto[wdth,wght].ttf" },
+        { name: "Hindi", url: "./Lohit-Devanagari.ttf" },
+        { name: "Arabic", url: "./Amiri-Regular.ttf" }
       ];
       // Store loaded fonts by name
       const loadedFonts = {};
