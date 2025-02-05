@@ -8,11 +8,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 0; text-align: center; background: #222; color: #eee; }
+        body { font-family: sans-serif; margin: 0; padding: 20px; text-align: center; background: #222; color: #eee; }
         .toolbar { padding: 10px; background: #333; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
         .toolbar input, .toolbar select, .toolbar button { padding: 5px; }
         .canvas-container { display: flex; justify-content: center; margin-top: 10px; }
-        .export-controls { margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -25,27 +24,11 @@
         <label>Font: <select id="fontSelect"></select></label>
         <label>Upload Font: <input id="fontUpload" type="file" accept=".ttf,.otf"></label>
         <button onclick="generateLetterTemplate()">Generate</button>
-        <button onclick="undo()">Undo</button>
-        <button onclick="redo()">Redo</button>
     </div>
 
     <!-- Canvas Area -->
     <div class="canvas-container">
         <canvas id="fabricCanvas" width="600" height="600"></canvas>
-    </div>
-
-    <!-- Stroke Controls -->
-    <div class="toolbar">
-        <button onclick="addStroke()">Add Stroke</button>
-        <button onclick="groupObjects()">Group</button>
-        <button onclick="ungroupObjects()">Ungroup</button>
-        <button onclick="clearCanvas()">Clear</button>
-    </div>
-
-    <!-- Export Buttons -->
-    <div class="export-controls">
-        <button onclick="exportJSON()">Export JSON</button>
-        <button onclick="exportSVG()">Export SVG</button>
     </div>
 
     <script>
@@ -56,79 +39,15 @@
             backgroundColor: "white"
         });
 
-        let history = [], redoStack = [], strokesData = [];
-        const strokeColors = ["red", "green", "blue", "orange", "purple", "cyan"];
-
-        function saveState() {
-            redoStack = [];
-            history.push(fabricCanvas.toJSON());
-        }
-
-        function undo() {
-            if (history.length > 1) {
-                redoStack.push(history.pop());
-                fabricCanvas.loadFromJSON(history[history.length - 1], fabricCanvas.renderAll.bind(fabricCanvas));
-            }
-        }
-
-        function redo() {
-            if (redoStack.length > 0) {
-                history.push(redoStack.pop());
-                fabricCanvas.loadFromJSON(history[history.length - 1], fabricCanvas.renderAll.bind(fabricCanvas));
-            }
-        }
-
-        /***************************
-         * 🎨 Handle Stroke Interactions
-         ***************************/
-        function addStroke() {
-            let stroke = new fabric.Path("M100,100 L200,100 L200,200 L100,200 Z", {
-                fill: "transparent",
-                stroke: strokeColors[strokesData.length % strokeColors.length],
-                strokeWidth: 2,
-                selectable: true
-            });
-
-            fabricCanvas.add(stroke);
-            strokesData.push(stroke);
-            saveState();
-        }
-
-        function groupObjects() {
-            let activeObjects = fabricCanvas.getActiveObjects();
-            if (activeObjects.length > 1) {
-                let group = new fabric.Group(activeObjects);
-                fabricCanvas.clear();
-                fabricCanvas.add(group);
-                fabricCanvas.setActiveObject(group);
-                fabricCanvas.requestRenderAll();
-                saveState();
-            }
-        }
-
-        function ungroupObjects() {
-            let activeObject = fabricCanvas.getActiveObject();
-            if (activeObject && activeObject.type === "group") {
-                fabricCanvas.remove(activeObject);
-                activeObject._objects.forEach(obj => fabricCanvas.add(obj));
-                fabricCanvas.requestRenderAll();
-                saveState();
-            }
-        }
-
-        function clearCanvas() {
-            fabricCanvas.clear();
-            saveState();
-        }
-
-        /***************************
-         * 🖋️ Convert Font to SVG Paths
-         ***************************/
         let loadedFonts = {};
+        const strokeColors = ["red", "green", "blue", "orange", "purple", "cyan", "pink", "yellow"];
 
+        /***************************
+         * 🖋️ Convert Font to SVG Paths (Use Fabric.js)
+         ***************************/
         function generateLetterTemplate() {
             const letter = document.getElementById("letterInput").value.trim();
-            if (letter === "") {
+            if (!letter) {
                 alert("Please enter a letter.");
                 return;
             }
@@ -143,20 +62,44 @@
             const glyph = font.charToGlyph(letter);
             const pathData = glyph.getPath(50, 250, 200).toPathData();
 
-            let path = new fabric.Path(pathData, {
-                fill: "transparent",
-                stroke: strokeColors[strokesData.length % strokeColors.length],
-                strokeWidth: 2,
-                selectable: true
-            });
-
-            fabricCanvas.add(path);
-            strokesData.push(path);
-            saveState();
+            // Convert SVG path string into Fabric.js paths
+            loadSVGIntoFabric(pathData);
         }
 
         /***************************
-         * 📁 Load Fonts Dynamically
+         * 📂 Convert SVG Path Data into Fabric.js Paths
+         ***************************/
+        function loadSVGIntoFabric(svgPathData) {
+            fabricCanvas.clear(); // Clear previous letters
+
+            // Split path data into separate strokes (each "M" command starts a new stroke)
+            const paths = svgPathData.split(/(?=M)/).filter(seg => seg.trim().length > 0);
+
+            paths.forEach((path, index) => {
+                const color = strokeColors[index % strokeColors.length]; // Assign different colors
+
+                fabric.loadSVGFromString(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${path.trim()}" /></svg>`, function(objects) {
+                    objects.forEach(obj => {
+                        obj.set({
+                            fill: color,
+                            stroke: color, // Assign unique color
+                            strokeWidth: 2,
+                            selectable: true,
+                            evented: true,
+                            hasControls: true,
+                            hoverCursor: "pointer"
+                        });
+
+                        fabricCanvas.add(obj);
+                    });
+
+                    fabricCanvas.renderAll(); // Update canvas
+                });
+            });
+        }
+
+        /***************************
+         * 📁 Load Default Fonts Dynamically
          ***************************/
         function loadDefaultFonts() {
             const fontSelect = document.getElementById("fontSelect");
@@ -178,21 +121,27 @@
             });
         }
 
+        /***************************
+         * 📂 Handle Font Uploads
+         ***************************/
         document.getElementById("fontUpload").addEventListener("change", function(event) {
             const file = event.target.files[0];
             if (!file) return;
+
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
                     const font = opentype.parse(e.target.result);
                     const name = file.name.replace(/\.[^/.]+$/, "");
                     loadedFonts[name] = font;
+
                     const fontSelect = document.getElementById("fontSelect");
                     let opt = document.createElement("option");
                     opt.value = name;
                     opt.textContent = name;
                     fontSelect.appendChild(opt);
                     fontSelect.value = name;
+
                     alert("Loaded font: " + name);
                 } catch (err) {
                     alert("Error parsing font file.");
@@ -201,57 +150,7 @@
             reader.readAsArrayBuffer(file);
         });
 
-        /***************************
-         * 🔄 Export Functionality
-         ***************************/
-        function exportJSON() {
-            const jsonStr = JSON.stringify(fabricCanvas.toJSON(), null, 2);
-            const blob = new Blob([jsonStr], { type: "application/json" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = "strokeData.json";
-            a.click();
-        }
-
-        function exportSVG() {
-            const svgData = fabricCanvas.toSVG();
-            const blob = new Blob([svgData], { type: "image/svg+xml" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = "edited.svg";
-            a.click();
-        }
-
         window.addEventListener("DOMContentLoaded", loadDefaultFonts);
-        function loadSVGIntoFabric(svgString) {
-    fabric.loadSVGFromString(svgString, function(objects, options) {
-        fabricCanvas.clear(); // Clear canvas before adding new paths
-
-        objects.forEach(obj => {
-            obj.set({
-                selectable: true,  // Allow selection
-                evented: true,     // Allow mouse interactions
-                hasControls: true, // Show resize controls
-                hoverCursor: "pointer"
-            });
-
-            fabricCanvas.add(obj);
-        });
-
-        fabricCanvas.renderAll(); // Update canvas
-    });
-}
-
-// Convert the given static SVG into interactive Fabric.js paths
-const svgString = `
-<svg width="600" height="600" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">
-    <path d="M69.43359375,57.8125 L69.140625,70.41015625 L22.0703125,200 L2.83203125,200 L57.03125,57.8125 L69.43359375,57.8125" fill="red" stroke="red" stroke-width="2"></path>
-    <path d="M127.9296875,200 L108.59375,200 L61.42578125,70.41015625 L61.1328125,57.8125 L73.53515625,57.8125 L127.9296875,200" fill="green" stroke="green" stroke-width="2"></path>
-    <path d="M26.26953125,147.36328125 L106.15234375,147.36328125 L106.15234375,162.79296875 L26.26953125,162.79296875 L26.26953125,147.36328125" fill="blue" stroke="blue" stroke-width="2"></path>
-</svg>`;
-
-// Load into Fabric.js Canvas
-loadSVGIntoFabric(svgString);
     </script>
 </body>
 </html>
