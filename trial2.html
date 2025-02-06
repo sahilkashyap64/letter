@@ -2,105 +2,230 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Font to SVG with Fabric.js</title>
-    <!-- Libraries -->
+    <title>Interactive Letter Tracing App</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
-
     <style>
         body { font-family: sans-serif; margin: 0; padding: 20px; text-align: center; background: #222; color: #eee; }
         .toolbar { padding: 10px; background: #333; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
         .toolbar input, .toolbar select, .toolbar button { padding: 5px; }
         .canvas-container { display: flex; justify-content: center; margin-top: 10px; }
+        .stroke-list { text-align: left; margin-left: 20px; }
+        .stroke-list li { margin-bottom: 5px; }
+        .selected { border: 2px solid yellow; }
+        #fabricCanvas { border: 1px solid #ccc; }
     </style>
 </head>
 <body>
 
-    <h1>Font to SVG Editor (Fabric.js)</h1>
+    <h1>Interactive Letter Tracing App</h1>
 
-    <!-- Toolbar -->
     <div class="toolbar">
         <label>Letter: <input id="letterInput" type="text" maxlength="1" placeholder="Enter letter"></label>
         <label>Font: <select id="fontSelect"></select></label>
         <label>Upload Font: <input id="fontUpload" type="file" accept=".ttf,.otf"></label>
-        <button onclick="generateLetterTemplate()">Generate</button>
+        <button onclick="generateLetterTemplate()">Generate Letter</button>
+        <button onclick="toggleArrowMode()">Draw Arrows</button>
     </div>
 
-    <!-- Canvas Area -->
     <div class="canvas-container">
         <canvas id="fabricCanvas" width="600" height="600"></canvas>
     </div>
 
+    <div class="stroke-list">
+        <h2>Strokes</h2>
+        <ul id="strokeList">
+            <!-- Stroke names will be added here -->
+        </ul>
+    </div>
+
     <script>
-        /***************************
-         * 🌟 Initialize Fabric.js Canvas
-         ***************************/
-        const fabricCanvas = new fabric.Canvas("fabricCanvas", {
-            backgroundColor: "white"
+        const fabricCanvas = new fabric.Canvas('fabricCanvas');
+        const strokeList = document.getElementById("strokeList");
+        let loadedFonts = {};
+        let strokes = [];
+        let isArrowMode = false;
+
+        fabric.LineArrow = fabric.util.createClass(fabric.Line, {
+            type: 'lineArrow',
+            initialize: function(element, options) {
+                options || (options = {});
+                this.callSuper('initialize', element, options);
+            },
+            toObject: function() {
+                return fabric.util.object.extend(this.callSuper('toObject'));
+            },
+            _render: function(ctx) {
+                this.callSuper('_render', ctx);
+
+                // do not render if width/height are zeros or object is not visible
+                if (this.width === 0 || this.height === 0 || !this.visible) return;
+
+                ctx.save();
+
+                var xDiff = this.x2 - this.x1;
+                var yDiff = this.y2 - this.y1;
+                var angle = Math.atan2(yDiff, xDiff);
+                ctx.translate((this.x2 - this.x1) / 2, (this.y2 - this.y1) / 2);
+                ctx.rotate(angle);
+                ctx.beginPath();
+                ctx.moveTo(10, 0);
+                ctx.lineTo(-20, 15);
+                ctx.lineTo(-20, -15);
+                ctx.closePath();
+                ctx.fillStyle = this.stroke;
+                ctx.fill();
+
+                ctx.restore();
+            }
         });
 
-        let loadedFonts = {};
-        const strokeColors = ["red", "green", "blue", "orange", "purple", "cyan", "pink", "yellow"];
+        fabric.LineArrow.fromObject = function(object, callback) {
+            callback && callback(new fabric.LineArrow([object.x1, object.y1, object.x2, object.y2], object));
+        };
 
-        /***************************
-         * 🖋️ Convert Font to SVG Paths (Use Fabric.js)
-         ***************************/
+        fabric.LineArrow.async = true;
+
+        const Arrow = (function() {
+            function Arrow(canvas) {
+                this.canvas = canvas;
+                this.className = 'Arrow';
+                this.isDrawing = false;
+                this.bindEvents();
+            }
+
+            Arrow.prototype.bindEvents = function() {
+                var inst = this;
+                inst.canvas.on('mouse:down', function(o) {
+                    inst.onMouseDown(o);
+                });
+                inst.canvas.on('mouse:move', function(o) {
+                    inst.onMouseMove(o);
+                });
+                inst.canvas.on('mouse:up', function(o) {
+                    inst.onMouseUp(o);
+                });
+                inst.canvas.on('object:moving', function(o) {
+                    inst.disable();
+                })
+            }
+
+            Arrow.prototype.onMouseUp = function(o) {
+                var inst = this;
+                inst.disable();
+            };
+
+            Arrow.prototype.onMouseMove = function(o) {
+                var inst = this;
+                if (!inst.isEnable()) {
+                    return;
+                }
+
+                var pointer = inst.canvas.getPointer(o.e);
+                var activeObj = inst.canvas.getActiveObject();
+                activeObj.set({
+                    x2: pointer.x,
+                    y2: pointer.y
+                });
+                activeObj.setCoords();
+                inst.canvas.renderAll();
+            };
+
+            Arrow.prototype.onMouseDown = function(o) {
+                var inst = this;
+                if (!isArrowMode) return; // Only draw if in arrow mode
+                inst.enable();
+                var pointer = inst.canvas.getPointer(o.e);
+
+                var points = [pointer.x, pointer.y, pointer.x, pointer.y];
+                var line = new fabric.LineArrow(points, {
+                    strokeWidth: 5,
+                    fill: 'red',
+                    stroke: 'red',
+                    originX: 'center',
+                    originY: 'center',
+                    hasBorders: false,
+                    hasControls: false
+                });
+
+                inst.canvas.add(line).setActiveObject(line);
+            };
+
+            Arrow.prototype.isEnable = function() {
+                return this.isDrawing;
+            }
+
+            Arrow.prototype.enable = function() {
+                this.isDrawing = true;
+            }
+
+            Arrow.prototype.disable = function() {
+                this.isDrawing = false;
+            }
+
+            return Arrow;
+        }());
+
+        const arrow = new Arrow(fabricCanvas);
+
         function generateLetterTemplate() {
             const letter = document.getElementById("letterInput").value.trim();
-            if (!letter) {
-                alert("Please enter a letter.");
-                return;
-            }
-
+            if (!letter) { alert("Please enter a letter."); return; }
             const fontName = document.getElementById("fontSelect").value;
-            if (!loadedFonts[fontName]) {
-                alert("Font not loaded yet. Please try again.");
-                return;
-            }
+            if (!loadedFonts[fontName]) { alert("Font not loaded yet. Please try again."); return; }
 
             const font = loadedFonts[fontName];
             const glyph = font.charToGlyph(letter);
-            const pathData = glyph.getPath(50, 250, 200).toPathData();
+            const pathData = glyph.getPath(50, 450, 400).toPathData();
 
-            // Convert SVG path string into Fabric.js paths
-            loadSVGIntoFabric(pathData);
+            loadLetter(pathData);
         }
 
-        /***************************
-         * 📂 Convert SVG Path Data into Fabric.js Paths
-         ***************************/
-        function loadSVGIntoFabric(svgPathData) {
-            fabricCanvas.clear(); // Clear previous letters
+        function loadLetter(svgPathData) {
+            fabricCanvas.clear();
+            strokeList.innerHTML = "";
+            strokes = [];
 
-            // Split path data into separate strokes (each "M" command starts a new stroke)
             const paths = svgPathData.split(/(?=M)/).filter(seg => seg.trim().length > 0);
 
-            paths.forEach((path, index) => {
-                const color = strokeColors[index % strokeColors.length]; // Assign different colors
-
-                fabric.loadSVGFromString(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${path.trim()}" /></svg>`, function(objects) {
+            paths.forEach((pathData, index) => {
+                fabric.loadSVGFromString(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${pathData.trim()}" /></svg>`, (objects, options) => {
                     objects.forEach(obj => {
                         obj.set({
-                            fill: color,
-                            stroke: color, // Assign unique color
-                            strokeWidth: 2,
-                            selectable: true,
-                            evented: true,
-                            hasControls: true,
-                            hoverCursor: "pointer"
+                            fill: null,
+                            stroke: getRandomColor(),
+                            strokeWidth: 3,
+                            strokeLineCap: 'round',
+                            strokeLineJoin: 'round',
+                            objectCaching: false,
+                            hasControls: false,
+                            lockMovementX: true,
+                            lockMovementY: true,
+                            hasBorders: false
                         });
-
                         fabricCanvas.add(obj);
+                        strokes.push({ path: obj, name: `Stroke ${index + 1}` });
                     });
-
-                    fabricCanvas.renderAll(); // Update canvas
+                    addStrokeToList(`Stroke ${index + 1}`, index);
                 });
             });
         }
 
-        /***************************
-         * 📁 Load Default Fonts Dynamically
-         ***************************/
+        function addStrokeToList(name, index) {
+            const listItem = document.createElement("li");
+            listItem.textContent = name;
+            strokeList.appendChild(listItem);
+        }
+
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
         function loadDefaultFonts() {
             const fontSelect = document.getElementById("fontSelect");
             const defaultFonts = [
@@ -121,9 +246,6 @@
             });
         }
 
-        /***************************
-         * 📂 Handle Font Uploads
-         ***************************/
         document.getElementById("fontUpload").addEventListener("change", function(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -149,6 +271,15 @@
             };
             reader.readAsArrayBuffer(file);
         });
+
+        function toggleArrowMode() {
+            isArrowMode = !isArrowMode;
+            if (isArrowMode) {
+                console.log("Arrow drawing mode enabled");
+            } else {
+                console.log("Arrow drawing mode disabled");
+            }
+        }
 
         window.addEventListener("DOMContentLoaded", loadDefaultFonts);
     </script>
