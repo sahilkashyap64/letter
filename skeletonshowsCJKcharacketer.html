@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Skeleton Tracing</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #000;
+      color: #fff;
+      text-align: center;
+    }
+    canvas {
+      background: black;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Skeleton Tracing</h1>
+<p>Click below to load an image or generate a random Unicode character.</p>
+
+<button onclick="fromImageUrl('test_images/sample.png')">Load Image</button>
+<button onclick="fromUnicode()">Generate Unicode Character</button>
+
+<script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
+<script>
+  var canv = document.createElement("canvas");
+  var ctx = canv.getContext('2d');
+  canv.width = 270;
+  canv.height = 150;
+  document.body.appendChild(canv);
+
+  var div = document.createElement("div");
+  div.style = "pointer-events:none";
+  document.body.appendChild(div);
+
+  var DWIDTH = 800;
+
+  function fromImageUrl(url) {
+    var img = new Image();
+    img.src = url;
+    img.onload = function () {
+      canv.width = img.width;
+      canv.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      var s = TraceSkeleton.fromCanvas(canv);
+      var v = TraceSkeleton.visualize(s, { scale: DWIDTH / img.width, strokeWidth: 4 });
+      div.innerHTML = v;
+    };
+  }
+
+  function fromUnicode() {
+    canv.width = 270;
+    canv.height = 150;
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, canv.width, canv.height);
+    
+    var char = String.fromCharCode(0x4e00 + Math.floor(Math.random() * (0x9fff - 0x4e00)));
+    
+    ctx.fillStyle = "white";
+    ctx.font = "160px Kaiti TC";
+    ctx.fillText(char, 20, 120);
+
+    var imdata = ctx.getImageData(0, 0, canv.width, canv.height);
+    var data = imdata.data;
+    var str = "";
+
+    for (var i = 0; i < data.length; i += 4) {
+      str += (data[i] > 128) ? "\1" : "\0";
+    }
+
+    var s = TraceSkeleton.fromCharString(str, canv.width, canv.height);
+    var v = TraceSkeleton.visualize(s, { scale: DWIDTH / canv.width, strokeWidth: 4, keypoints: true });
+    div.innerHTML = v;
+  }
+
+  // Auto-start Unicode character tracing
+  fromUnicode();
+</script>
+
+</body>
+</html>
