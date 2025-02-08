@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Font Preview with Unicode Extraction</title>
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
+  <style>
+    svg {
+      border: 1px solid #ccc;
+      height: 10em;
+      width: 100%;
+    }
+    #unicodeList {
+      font-family: monospace; /* Use a monospace font to align the unicode output */
+      white-space: pre-wrap;
+      word-break: break-all; /* Prevents very long glyph names from breaking the layout */
+    }
+  </style>
+</head>
+<body>
+  <h1>Font Preview</h1>
+  <label for="fontUpload">Upload Font:</label>
+  <input type="file" id="fontUpload" accept=".ttf,.otf,.woff">
+  <label for="defaultFonts">Select Default Font:</label>
+  <select id="defaultFonts"></select>
+  <label for="textInput">Enter Text:</label>
+  <input type="text" id="textInput" value="ABCD0123">
+  <svg id="svgPreview" viewBox="0 0 1000 100"></svg>
+  <h2>Unicode Character List</h2>
+  <div id="unicodeList"></div>
+
+  <script>
+    let preview = document.querySelector("#svgPreview");
+    let textInput = document.querySelector("#textInput");
+    let chars = textInput.value;
+    let output = '';
+
+    const defaultFonts = [
+      { name: "English (Roboto)", url: "./Roboto[wdth,wght].ttf" },
+      { name: "Hindi (Lohit Devanagari)", url: "./Lohit-Devanagari.ttf" },
+      { name: "Arabic (Amiri)", url: "./Amiri-Regular.ttf" }
+    ];
+
+    const fontSelect = document.getElementById("defaultFonts");
+    defaultFonts.forEach(font => {
+      const option = document.createElement("option");
+      option.value = font.url;
+      option.textContent = font.name;
+      fontSelect.appendChild(option);
+    });
+
+    function loadFont(fontUrl) {
+      opentype.load(fontUrl, function (err, font) {
+        if (!err) {
+          let glyphs = font.stringToGlyphs(chars);
+          console.log(glyphs);
+          let paths = font.getPaths(chars, 0, 90, 100);
+          output = '';
+          paths.forEach(function (path) {
+            output += path.toSVG(2);
+          });
+          preview.innerHTML = output;
+          let vb = preview.getBBox();
+          preview.setAttribute('viewBox', [0, 0, (vb.width + vb.x), 120].join(' '));
+          console.log(paths);
+
+          // Extract and display Unicode values
+          const unicodeListDiv = document.getElementById("unicodeList");
+          let unicodeInfo = "";
+          console.log("font.charToGlyph(chars[0])",font.charToGlyph(chars[0]));
+          console.log("hee",font.glyphs);
+          glyphs.forEach(glyph => {
+              if(glyph.unicode){
+                  unicodeInfo += ` Unicode: ${glyph.unicode} (${String.fromCharCode(glyph.unicode)})<br>`;
+              }
+              
+          });
+          unicodeListDiv.innerHTML = unicodeInfo;
+
+        } else {
+          console.log("Font could not be loaded: " + err);
+        }
+      });
+    }
+
+    loadFont(defaultFonts[0].url);
+
+    document.getElementById("defaultFonts").addEventListener("change", function () {
+      loadFont(this.value);
+    });
+
+    document.getElementById("fontUpload").addEventListener("change", function (event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const fontData = e.target.result;
+          opentype.load(fontData, function (err, font) {
+            if (!err) {
+              let paths = font.getPaths(chars, 0, 90, 100);
+              output = '';
+              paths.forEach(function (path) {
+                output += path.toSVG(2);
+              });
+              preview.innerHTML = output;
+              let vb = preview.getBBox();
+              preview.setAttribute('viewBox', [0, 0, (vb.width + vb.x), 120].join(' '));
+              console.log(paths);
+
+              // Extract and display Unicode values (same as above)
+              const unicodeListDiv = document.getElementById("unicodeList");
+              let unicodeInfo = "";
+              console.log("hee",font.glyphs);
+              font.glyphs.forEach(glyph => {
+                  if(glyph.unicode){
+                      unicodeInfo += `Glyph name: ${glyph.name}, Unicode: ${glyph.unicode} (${String.fromCharCode(glyph.unicode)})<br>`;
+                  }
+              });
+              unicodeListDiv.innerHTML = unicodeInfo;
+
+            } else {
+              console.log("Uploaded font could not be loaded: " + err);
+            }
+          });
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    });
+
+    textInput.addEventListener("input", function () {
+      chars = this.value;
+      loadFont(fontSelect.value);
+    });
+  </script>
+</body>
+</html>
