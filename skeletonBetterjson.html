@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Skeleton Tracing – English Letters</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+      background: #222;
+      color: #eee;
+    }
+    #toolbar {
+      margin-bottom: 10px;
+    }
+    .svg-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .svg-box {
+      border: 1px solid #555;
+      width: 300px;
+      height: 300px;
+    }
+    textarea {
+      width: 100%;
+      height: 200px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Skeleton Tracing – English Letters</h1>
+  <div id="toolbar">
+    <label>
+      Letters:
+      <input id="letterInput" type="text" value="AB">
+    </label>
+    <button id="generateButton">Generate Skeletons</button>
+    <button id="exportButton">Export JSON</button>
+  </div>
+  <div class="svg-container" id="svgContainer"></div>
+  <textarea id="jsonOutput" readonly></textarea>
+
+  <!-- Load the skeleton-tracing library -->
+  <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
+  <script>
+    // Helper: Convert a canvas’s image into a binary string.
+    // For each pixel, if its brightness (average of R, G, B) is below threshold, mark it as "\1" (on), otherwise "\0".
+    function canvasToBinaryString(canvas, threshold = 128) {
+      const ctx = canvas.getContext("2d");
+      const { width, height } = canvas;
+      const imageData = ctx.getImageData(0, 0, width, height);
+      let binStr = "";
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        const r = imageData.data[i];
+        const g = imageData.data[i + 1];
+        const b = imageData.data[i + 2];
+        const avg = (r + g + b) / 3;
+        binStr += (avg < threshold) ? "\1" : "\0";
+      }
+      return binStr;
+    }
+
+    // Process one English letter:
+    // Create a temporary canvas, draw the letter in white on a black background,
+    // convert the result to a binary string, extract the skeleton, and display it.
+    function processEnglishLetter(letter, container) {
+      console.log("🚀 ~ processEnglishLetter ~ letter:", letter)
+      // Create a temporary (offscreen) canvas.
+      const canvas = document.createElement("canvas");
+      canvas.width = 270;
+      canvas.height = 150;
+      const ctx = canvas.getContext("2d");
+      
+      // Draw background black and then the letter in white using a standard English font.
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "white";
+      ctx.font = "160px Arial";
+      // Position the letter (adjust as needed).
+      ctx.fillText(letter, 0, 120);
+      var imdata = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var data = imdata.data;
+        var str = "";
+        for (var i = 0; i < data.length; i += 4) {
+          str += (data[i] > 128) ? "\1" : "\0";
+        }
+      console.log("🚀 ~ processEnglishLetter ~ data:", data)
+      // Convert the drawn image into a binary string.
+    //   const binStr = canvasToBinaryString(canvas);
+      
+      // Extract the skeleton using the fromCharString API.
+      const skeleton = TraceSkeleton.fromCharString(str, canvas.width, canvas.height);
+      console.log("🚀 ~ processEnglishLetter ~ skeleton:", skeleton)
+      
+      // Visualize the skeleton as an SVG.
+      const svgString = TraceSkeleton.visualize(skeleton, {
+        scale: 1,
+        strokeWidth: 8,
+        rects: false,
+        keypoints: false
+      });
+      console.log("🚀 ~ processEnglishLetter ~ svgString:", svgString)
+      // Display the resulting SVG in the container.
+      container.innerHTML = svgString;
+      // Store the skeleton data and the letter (for later export).
+      container.skeleton = skeleton;
+      container.letter = letter;
+    }
+
+    // When "Generate Skeletons" is clicked:
+    // Split the input string into letters, and for each one create a box and process it.
+    document.getElementById("generateButton").addEventListener("click", function() {
+      const input = document.getElementById("letterInput").value;
+      const letters = input.split("");
+      const containerDiv = document.getElementById("svgContainer");
+      containerDiv.innerHTML = "";
+      
+      letters.forEach(letter => {
+        const box = document.createElement("div");
+        box.className = "svg-box";
+        containerDiv.appendChild(box);
+        processEnglishLetter(letter, box);
+      });
+    });
+  // --- Helper functions to merge only connected polyline segments ---
+
+    // Euclidean distance between two points [x, y]
+    function distance(p1, p2) {
+      const dx = p1[0] - p2[0];
+      const dy = p1[1] - p2[1];
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    // Merge polyline segments only if they are "connected" (i.e. the distance between
+    // the end of one segment and the start of another is less than a given threshold).
+    // This function takes an array of polyline segments and returns an array of merged strokes.
+    function mergeConnectedPolylines(polylines, threshold = 5) {
+      // Create a shallow copy of the segments.
+      let segments = polylines.slice();
+      let merged = [];
+      
+      while (segments.length > 0) {
+        let current = segments.shift();
+        let didMerge = true;
+        while (didMerge) {
+          didMerge = false;
+          for (let i = 0; i < segments.length; i++) {
+            let seg = segments[i];
+            let currentLast = current[current.length - 1];
+            let segFirst = seg[0];
+            let segLast = seg[seg.length - 1];
+            // If the end of current is close to the beginning of seg, append seg.
+            if (distance(currentLast, segFirst) < threshold) {
+              current = current.concat(seg.slice(1));
+              segments.splice(i, 1);
+              didMerge = true;
+              break;
+            }
+            // If the end of current is close to the end of seg, reverse seg and append.
+            else if (distance(currentLast, segLast) < threshold) {
+              seg.reverse();
+              current = current.concat(seg.slice(1));
+              segments.splice(i, 1);
+              didMerge = true;
+              break;
+            }
+            // If the beginning of current is close to the end of seg, prepend seg.
+            else if (distance(current[0], segLast) < threshold) {
+              current = seg.concat(current.slice(1));
+              segments.splice(i, 1);
+              didMerge = true;
+              break;
+            }
+            // If the beginning of current is close to the beginning of seg, reverse seg and prepend.
+            else if (distance(current[0], segFirst) < threshold) {
+              seg.reverse();
+              current = seg.concat(current.slice(1));
+              segments.splice(i, 1);
+              didMerge = true;
+              break;
+            }
+          }
+        }
+        merged.push(current);
+      }
+      return merged;
+    }
+
+    // Mapping for export names: e.g., "A" becomes "alpha", "B" becomes "beta", etc.
+    const letterNameMapping = {
+      "A": "alpha",
+      "B": "beta",
+      "C": "gamma",
+      "D": "delta",
+      "E": "epsilon",
+      "F": "zeta",
+      "G": "eta",
+      "H": "theta",
+      "I": "iota",
+      "J": "kappa",
+      "K": "lambda",
+      "L": "mu",
+      "M": "nu",
+      "N": "xi",
+      "O": "omicron",
+      "P": "pi",
+      "Q": "rho",
+      "R": "sigma",
+      "S": "tau",
+      "T": "upsilon",
+      "U": "phi",
+      "V": "chi",
+      "W": "psi",
+      "X": "omega",
+      "Y": "ypsilon",
+      "Z": "zephyr"
+    };
+
+    document.getElementById("exportButton").addEventListener("click", function() {
+      const boxes = document.querySelectorAll(".svg-box");
+      const exportData = [];
+      boxes.forEach(box => {
+        if (box.skeleton && box.letter) {
+          const letter = box.letter.toUpperCase();
+          const exportName = letterNameMapping[letter] || letter.toLowerCase();
+          // Merge only connected polyline segments.
+          const mergedStrokes = mergeConnectedPolylines(box.skeleton.polylines, 5);
+          // Map each merged stroke's points to the desired format.
+          const gestures = mergedStrokes.map(stroke =>
+            stroke.map(pt => ({ X: pt[0], Y: pt[1], ID: 0 }))
+          );
+          exportData.push({
+            name: exportName,
+            gestures: gestures
+          });
+        }
+      });
+      document.getElementById("jsonOutput").value = JSON.stringify(exportData, null, 2);
+    });
+  </script>
+</body>
+</html>
