@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Skeleton Tracing with Font and Unicode</title>
+  <title>Skeleton Tracing - Compare Side by Side</title>
   <style>
     body {
       font-family: sans-serif;
@@ -10,21 +10,47 @@
       color: #fff;
       text-align: center;
     }
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 20px;
+      width: 90%;
+      max-width: 1000px;
+    }
+    .grid-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #222;
+      padding: 10px;
+      border-radius: 8px;
+    }
     canvas {
       background: black;
-      margin-top: 20px;
+      display: block;
+      border: 1px solid white;
     }
-    #unicodeList {
+    .unicode-table {
       font-family: monospace;
       white-space: pre-wrap;
-      word-break: break-all;
-      color: white;
-      text-align: left;
-      margin: 20px auto;
+      word-break: break-word;
+      background: #222;
+      border-radius: 8px;
+      padding: 10px;
       width: 80%;
+      text-align: left;
     }
-    #unicodeList h2 {
-      text-align: center;
+    input, select, button {
+      font-size: 16px;
+      margin: 5px;
+      padding: 5px 10px;
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
@@ -32,8 +58,8 @@
 </head>
 <body>
 
-<h1>Skeleton Tracing with Font and Unicode</h1>
-<p>Load an image, select a default font or upload a font, and enter text to see the skeleton tracing.</p>
+<h1>Skeleton Tracing - Compare Letters with Skeleton</h1>
+<p>Load an image, select a default font or upload a font, and enter text to see letter and skeleton side by side.</p>
 
 <button onclick="fromImageUrl('test_images/sample.png')">Load Image</button>
 
@@ -46,33 +72,30 @@
 <label for="textInput">Enter Text:</label>
 <input type="text" id="textInput" value="ABCD0123">
 
-<div id="unicodeList">
-  <h2>Unicode Character List</h2>
-  <div id="unicodeValues"></div>
+<div class="container">
+  <div class="grid" id="comparisonGrid"></div>
+  
+  <div class="unicode-table">
+    <h2>Unicode Character List</h2>
+    <div id="unicodeValues"></div>
+  </div>
 </div>
 
-<canvas id="skeletonCanvas" width="270" height="150"></canvas>
-<div id="skeletonOutput" style="pointer-events:none"></div>
-
 <script>
-  // Get references to elements
-  var canv = document.getElementById("skeletonCanvas");
-  var ctx = canv.getContext('2d');
-  var div = document.getElementById("skeletonOutput");
-  const textInput = document.getElementById("textInput");
+  const comparisonGrid = document.getElementById("comparisonGrid");
   const unicodeValuesDiv = document.getElementById("unicodeValues");
+  const textInput = document.getElementById("textInput");
   const fontSelect = document.getElementById("defaultFonts");
 
-  var DWIDTH = 800;
-  let currentFont = null; // Store the loaded opentype font
-  let currentFontName = 'Arial';  //Store font name
-  let currentFontSize = 160;
+  let currentFontName = 'Arial';  
+  let currentFontSize = 120;
+  let DWIDTH = 800;
 
   const defaultFonts = [
-    { name: "English (Arial)", url: "Arial", cssName: "Arial" }, // Arial is usually a system font, so URL is just a name
-    { name: "English (Roboto)", url: "./Roboto[wdth,wght].ttf", cssName: "Roboto" }, // You'll need to host this
-    { name: "Hindi (Lohit Devanagari)", url: "./Lohit-Devanagari.ttf", cssName: "Lohit Devanagari" }, // You'll need to host this
-    { name: "Arabic (Amiri)", url: "./Amiri-Regular.ttf", cssName: "Amiri" } // You'll need to host this
+    { name: "English (Arial)", url: "Arial", cssName: "Arial" },
+    { name: "English (Roboto)", url: "./Roboto[wdth,wght].ttf", cssName: "Roboto" },
+    { name: "Hindi (Lohit Devanagari)", url: "./Lohit-Devanagari.ttf", cssName: "Lohit Devanagari" },
+    { name: "Arabic (Amiri)", url: "./Amiri-Regular.ttf", cssName: "Amiri" }
   ];
 
   defaultFonts.forEach(font => {
@@ -83,107 +106,122 @@
   });
 
   function fromImageUrl(url) {
-    var img = new Image();
+    const img = new Image();
     img.src = url;
     img.onload = function () {
-      canv.width = img.width;
-      canv.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      var s = TraceSkeleton.fromCanvas(canv);
-      var v = TraceSkeleton.visualize(s, { scale: DWIDTH / img.width, strokeWidth: 4 });
-      div.innerHTML = v;
+      const imgCanvas = document.createElement("canvas");
+      imgCanvas.width = img.width;
+      imgCanvas.height = img.height;
+      const imgCtx = imgCanvas.getContext('2d', { willReadFrequently: true });
+      imgCtx.drawImage(img, 0, 0);
+
+      let s = TraceSkeleton.fromCanvas(imgCanvas);
+      let v = TraceSkeleton.visualize(s, { scale: DWIDTH / img.width, strokeWidth: 4 });
+
+      let gridItem = document.createElement("div");
+      gridItem.classList.add("grid-item");
+      gridItem.innerHTML = "<h3>Image</h3>";
+      gridItem.appendChild(imgCanvas);
+
+      let skeletonDiv = document.createElement("div");
+      skeletonDiv.innerHTML = v;
+      gridItem.appendChild(skeletonDiv);
+
+      comparisonGrid.innerHTML = ""; // Clear previous items
+      comparisonGrid.appendChild(gridItem);
     };
   }
 
   async function updateSkeletonFromText() {
-    const text = textInput.value;
+    const text = textInput.value.trim();
     if (!text) return;
 
-    canv.width = 270;
-    canv.height = 150;
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, canv.width, canv.height);
+    comparisonGrid.innerHTML = "";
+    unicodeValuesDiv.innerHTML = "";
 
-    ctx.fillStyle = "white";
-
-    //Use the current font
-    ctx.font = `${currentFontSize}px ${currentFontName}`;
-
-    ctx.fillText(text, 20, 120);
-
-    const imdata = ctx.getImageData(0, 0, canv.width, canv.height);
-    const data = imdata.data;
-    let str = "";
-
-    for (let i = 0; i < data.length; i += 4) {
-      str += (data[i] > 128) ? "\1" : "\0";
-    }
-
-    const s = TraceSkeleton.fromCharString(str, canv.width, canv.height);
-    const v = TraceSkeleton.visualize(s, { scale: DWIDTH / canv.width, strokeWidth: 4, keypoints: true });
-    div.innerHTML = v;
-
-    // Update the unicode list
-    let unicodeList = ""
     for (let i = 0; i < text.length; i++) {
-      unicodeList += ` ${text[i]} - Unicode: ${text[i].charCodeAt(0)} <br>`;
-    }
-    unicodeValuesDiv.innerHTML = unicodeList;
+      const letter = text[i];
 
+      let canvas = document.createElement("canvas");
+      let ctx = canvas.getContext('2d', { willReadFrequently: true });
+      canvas.width = 150;
+      canvas.height = 150;
+      ctx.fillStyle = "blue";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "white";
+      ctx.font = `${currentFontSize}px "${currentFontName}"`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(letter, canvas.width / 2, canvas.height / 2);
+
+      const imdata = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let str = "";
+      for (let j = 0; j < imdata.data.length; j += 4) {
+        str += (imdata.data[j] > 128) ? "\1" : "\0";
+      }
+console.log("🚀 ~ updateSkeletonFromText ~ canvas.width", canvas.width)
+console.log("🚀 ~ updateSkeletonFromText ~ canvas.height", canvas.height)
+      const s = TraceSkeleton.fromCharString(str, canvas.width, canvas.height);
+      const v = TraceSkeleton.visualize(s, { scale: 1, strokeWidth: 1,keypoints: false });
+
+      let gridItem = document.createElement("div");
+      gridItem.classList.add("grid-item");
+      gridItem.innerHTML = `<h3>${letter}</h3>`;
+      gridItem.appendChild(canvas);
+
+      let skeletonDiv = document.createElement("div");
+      skeletonDiv.innerHTML = v;
+      gridItem.appendChild(skeletonDiv);
+
+      comparisonGrid.appendChild(gridItem);
+
+      // Unicode Table
+      unicodeValuesDiv.innerHTML += `${letter} - Unicode: ${letter.charCodeAt(0)}<br>`;
+    }
   }
 
-  // Function to handle font loading (either from URL or File)
   async function loadFont(fontSource, isFile = false) {
     try {
       let font;
       if (isFile) {
         font = await opentype.load(fontSource);
-      } else if(fontSource != "Arial") {
-        font = await opentype.load(fontSource);  //URL
+      } else if (fontSource !== "Arial") {
+        font = await opentype.load(fontSource);
       }
 
       if (font) {
-          //Font was loaded by URL or file, extract its name to render
-          currentFontName = font.names.fontFamily.en;
-          console.log("🚀 ~ loadFont ~ currentFontName:", currentFontName)
+        currentFontName = font.names.fontFamily.en;
       } else {
-          //Set Arial when its system font or opentype load fails
-          currentFontName = "Arial"
+        currentFontName = "Arial";
       }
       updateSkeletonFromText();
     } catch (err) {
       console.error("Error loading font:", err);
-      currentFontName = "Arial"; //Fallback to arial upon loading failure
+      currentFontName = "Arial";
       updateSkeletonFromText();
     }
   }
 
-  // Handle Default Font selection
-  document.getElementById("defaultFonts").addEventListener("change", async function () {
+  fontSelect.addEventListener("change", async function () {
     const selectedFontUrl = this.value;
     await loadFont(selectedFontUrl);
   });
 
-
-  // Font Upload Handling
   document.getElementById("fontUpload").addEventListener("change", async function (event) {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = async function (e) {
         const fontData = e.target.result;
-        await loadFont(fontData, true); // Load from file data
+        await loadFont(fontData, true);
       };
       reader.readAsArrayBuffer(file);
     }
   });
 
-  // Listen for text input changes
   textInput.addEventListener("input", updateSkeletonFromText);
 
-  //Initialize load font with first default font
-  loadFont(defaultFonts[0].url)
-
+  loadFont(defaultFonts[0].url);
 </script>
 
 </body>
