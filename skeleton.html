@@ -1,108 +1,190 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Font Skeleton Extractor</title>
-    <script src="https://cdn.jsdelivr.net/npm/@svgdotjs/svg.js@3.1/dist/svg.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/opentype.js/1.3.4/opentype.min.js"></script>
-    <style>
-        body { font-family: sans-serif; margin: 20px; background: #222; color: #eee; }
-        #toolbar { margin-bottom: 10px; }
-        .svg-container { display: flex; flex-wrap: wrap; gap: 10px; }
-        .svg-box { border: 1px solid #555; width: 300px; height: 300px; }
-        #offscreenCanvas { display: none; }
-        textarea { width: 100%; height: 200px; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Skeleton Tracing with Font and Unicode</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #000;
+      color: #fff;
+      text-align: center;
+    }
+    canvas {
+      background: black;
+      margin-top: 20px;
+    }
+    #unicodeList {
+      font-family: monospace;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: white;
+      text-align: left;
+      margin: 20px auto;
+      width: 80%;
+    }
+    #unicodeList h2 {
+      text-align: center;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
 </head>
 <body>
-    <h1>Font Skeleton Extractor</h1>
-    <div id="toolbar">
-        <label>
-            Letters:
-            <input id="letterInput" type="text" placeholder="Enter letters" value="ABC">
-        </label>
-        <button id="generateButton">Generate Skeletons</button>
-        <button id="exportButton">Export JSON</button>
-    </div>
-    <div class="svg-container" id="svgContainer"></div>
-    <textarea id="jsonOutput" readonly></textarea>
-    <canvas id="offscreenCanvas" width="300" height="300"></canvas>
-    
-    <script>
-        let font;
-        const fontUrl = "./Roboto[wdth,wght].ttf";
-        opentype.load(fontUrl, function(err, loadedFont) {
-            if (err) { console.error("Font load error:", err); }
-            else { font = loadedFont; console.log("Font loaded.",f); }
-        });
 
-        function createLetterOutline(letter, container) {
-            const draw = SVG().addTo(container).size(300, 300);
-            const glyph = font.charToGlyph(letter);
-            const pathData = glyph.getPath(50, 250, 200).toPathData();
-            draw.path(pathData).fill('white');
-            setTimeout(() => processSkeleton(draw.node, container), 200);
-        }
+<h1>Skeleton Tracing with Font and Unicode</h1>
+<p>Load an image, select a default font or upload a font, and enter text to see the skeleton tracing.</p>
 
-        function processSkeleton(svgElement, container) {
-            const offscreenCanvas = document.getElementById("offscreenCanvas");
-            renderSVGToCanvas(svgElement, offscreenCanvas, function() {
-                const skeleton = extractSkeleton(offscreenCanvas);
-                visualizeSkeleton(skeleton, container);
-            });
-        }
+<button onclick="fromImageUrl('test_images/sample.png')">Load Image</button>
 
-        function renderSVGToCanvas(svgElement, canvasElement, callback) {
-            const svgString = svgElement.outerHTML;
-            const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-            const url = URL.createObjectURL(blob);
-            const img = new Image();
-            img.onload = function() {
-                const ctx = canvasElement.getContext("2d");
-                ctx.fillStyle = "black";
-                ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-                ctx.drawImage(img, 0, 0, canvasElement.width, canvasElement.height);
-                URL.revokeObjectURL(url);
-                callback();
-            };
-            img.src = url;
-        }
+<label for="defaultFonts">Select Default Font:</label>
+<select id="defaultFonts"></select>
 
-        function extractSkeleton(canvasElement) {
-            return TraceSkeleton.fromCanvas(canvasElement);
-        }
+<label for="fontUpload">Upload Font:</label>
+<input type="file" id="fontUpload" accept=".ttf,.otf,.woff">
 
-        function visualizeSkeleton(skeleton, container) {
-            const svgString = TraceSkeleton.visualize(skeleton, { scale: 1, strokeWidth: 2, keypoints: true });
-            container.innerHTML = svgString;
-        }
+<label for="textInput">Enter Text:</label>
+<input type="text" id="textInput" value="ABCD0123">
 
-        function exportSkeletonData() {
-            const skeletons = [];
-            document.querySelectorAll('.svg-box').forEach((box, index) => {
-                const letter = document.getElementById("letterInput").value[index];
-                const skeleton = TraceSkeleton.fromCanvas(document.getElementById("offscreenCanvas"));
-                skeletons.push({ name: letter.toLowerCase(), gestures: skeleton.polylines.map(poly => poly.map(pt => ({ X: pt[0], Y: pt[1], ID: 0 }))) });
-            });
-            document.getElementById("jsonOutput").value = JSON.stringify(skeletons, null, 2);
-        }
+<div id="unicodeList">
+  <h2>Unicode Character List</h2>
+  <div id="unicodeValues"></div>
+</div>
 
-        document.getElementById("generateButton").addEventListener("click", function() {
-            const letters = document.getElementById("letterInput").value.toUpperCase().split("");
-            const container = document.getElementById("svgContainer");
-            container.innerHTML = "";
-            letters.forEach(letter => {
-                const box = document.createElement("div");
-                box.className = "svg-box";
-                container.appendChild(box);
-                createLetterOutline(letter, box);
-            });
-        });
+<canvas id="skeletonCanvas" width="270" height="150"></canvas>
+<div id="skeletonOutput" style="pointer-events:none"></div>
 
-        document.getElementById("exportButton").addEventListener("click", exportSkeletonData);
-    </script>
-    <script src="navbar.js"></script>
-    <link rel="stylesheet" href="style.css">
+<script>
+  // Get references to elements
+  var canv = document.getElementById("skeletonCanvas");
+  var ctx = canv.getContext('2d');
+  var div = document.getElementById("skeletonOutput");
+  const textInput = document.getElementById("textInput");
+  const unicodeValuesDiv = document.getElementById("unicodeValues");
+  const fontSelect = document.getElementById("defaultFonts");
+
+  var DWIDTH = 800;
+  let currentFont = null; // Store the loaded opentype font
+  let currentFontName = 'Arial';  //Store font name
+  let currentFontSize = 160;
+
+  const defaultFonts = [
+    { name: "English (Arial)", url: "Arial", cssName: "Arial" }, // Arial is usually a system font, so URL is just a name
+    { name: "English (Roboto)", url: "./Roboto[wdth,wght].ttf", cssName: "Roboto" }, // You'll need to host this
+    { name: "Hindi (Lohit Devanagari)", url: "./Lohit-Devanagari.ttf", cssName: "Lohit Devanagari" }, // You'll need to host this
+    { name: "Arabic (Amiri)", url: "./Amiri-Regular.ttf", cssName: "Amiri" } // You'll need to host this
+  ];
+
+  defaultFonts.forEach(font => {
+    const option = document.createElement("option");
+    option.value = font.url;
+    option.textContent = font.name;
+    fontSelect.appendChild(option);
+  });
+
+  function fromImageUrl(url) {
+    var img = new Image();
+    img.src = url;
+    img.onload = function () {
+      canv.width = img.width;
+      canv.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      var s = TraceSkeleton.fromCanvas(canv);
+      var v = TraceSkeleton.visualize(s, { scale: DWIDTH / img.width, strokeWidth: 4 });
+      div.innerHTML = v;
+    };
+  }
+
+  async function updateSkeletonFromText() {
+    const text = textInput.value;
+    if (!text) return;
+
+    canv.width = 270;
+    canv.height = 150;
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, canv.width, canv.height);
+
+    ctx.fillStyle = "white";
+
+    //Use the current font
+    ctx.font = `${currentFontSize}px ${currentFontName}`;
+
+    ctx.fillText(text, 20, 120);
+
+    const imdata = ctx.getImageData(0, 0, canv.width, canv.height);
+    const data = imdata.data;
+    let str = "";
+
+    for (let i = 0; i < data.length; i += 4) {
+      str += (data[i] > 128) ? "\1" : "\0";
+    }
+
+    const s = TraceSkeleton.fromCharString(str, canv.width, canv.height);
+    const v = TraceSkeleton.visualize(s, { scale: DWIDTH / canv.width, strokeWidth: 4, keypoints: true });
+    div.innerHTML = v;
+
+    // Update the unicode list
+    let unicodeList = ""
+    for (let i = 0; i < text.length; i++) {
+      unicodeList += ` ${text[i]} - Unicode: ${text[i].charCodeAt(0)} <br>`;
+    }
+    unicodeValuesDiv.innerHTML = unicodeList;
+
+  }
+
+  // Function to handle font loading (either from URL or File)
+  async function loadFont(fontSource, isFile = false) {
+    try {
+      let font;
+      if (isFile) {
+        font = await opentype.load(fontSource);
+      } else if(fontSource != "Arial") {
+        font = await opentype.load(fontSource);  //URL
+      }
+
+      if (font) {
+          //Font was loaded by URL or file, extract its name to render
+          currentFontName = font.names.fontFamily.en;
+          console.log("🚀 ~ loadFont ~ currentFontName:", currentFontName)
+      } else {
+          //Set Arial when its system font or opentype load fails
+          currentFontName = "Arial"
+      }
+      updateSkeletonFromText();
+    } catch (err) {
+      console.error("Error loading font:", err);
+      currentFontName = "Arial"; //Fallback to arial upon loading failure
+      updateSkeletonFromText();
+    }
+  }
+
+  // Handle Default Font selection
+  document.getElementById("defaultFonts").addEventListener("change", async function () {
+    const selectedFontUrl = this.value;
+    await loadFont(selectedFontUrl);
+  });
+
+
+  // Font Upload Handling
+  document.getElementById("fontUpload").addEventListener("change", async function (event) {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = async function (e) {
+        const fontData = e.target.result;
+        await loadFont(fontData, true); // Load from file data
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  });
+
+  // Listen for text input changes
+  textInput.addEventListener("input", updateSkeletonFromText);
+
+  //Initialize load font with first default font
+  loadFont(defaultFonts[0].url)
+
+</script>
+
 </body>
 </html>
