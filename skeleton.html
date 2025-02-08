@@ -87,12 +87,13 @@
   const textInput = document.getElementById("textInput");
   const fontSelect = document.getElementById("defaultFonts");
 
-  let currentFontName = 'Arial';  
+  let currentFontName = 'Arial';  // Default font family name
   let currentFontSize = 120;
   let DWIDTH = 800;
+  let fontFace; // Store the FontFace object
 
   const defaultFonts = [
-    { name: "English (Arial)", url: "Arial", cssName: "Arial" },
+    { name: "English (Arial)", url: "Arial", cssName: "Arial" }, // Arial will use the CSS font (system default)
     { name: "English (Roboto)", url: "./Roboto[wdth,wght].ttf", cssName: "Roboto" },
     { name: "Hindi (Lohit Devanagari)", url: "./Lohit-Devanagari.ttf", cssName: "Lohit Devanagari" },
     { name: "Arabic (Amiri)", url: "./Amiri-Regular.ttf", cssName: "Amiri" }
@@ -149,7 +150,10 @@
       ctx.fillStyle = "blue";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "white";
+
+      // Use the FontFace object's family name to ensure the loaded font is used
       ctx.font = `${currentFontSize}px "${currentFontName}"`;
+
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(letter, canvas.width / 2, canvas.height / 2);
@@ -159,8 +163,6 @@
       for (let j = 0; j < imdata.data.length; j += 4) {
         str += (imdata.data[j] > 128) ? "\1" : "\0";
       }
-console.log("🚀 ~ updateSkeletonFromText ~ canvas.width", canvas.width)
-console.log("🚀 ~ updateSkeletonFromText ~ canvas.height", canvas.height)
       const s = TraceSkeleton.fromCharString(str, canvas.width, canvas.height);
       const v = TraceSkeleton.visualize(s, { scale: 1, strokeWidth: 1,keypoints: false });
 
@@ -182,18 +184,38 @@ console.log("🚀 ~ updateSkeletonFromText ~ canvas.height", canvas.height)
 
   async function loadFont(fontSource, isFile = false) {
     try {
-      let font;
+      let fontData;
+
       if (isFile) {
-        font = await opentype.load(fontSource);
+        // Loading from file
+        const buffer = await new Response(fontSource).arrayBuffer();
+        fontData = buffer;
       } else if (fontSource !== "Arial") {
-        font = await opentype.load(fontSource);
+        // Loading from URL
+        const response = await fetch(fontSource);
+        const buffer = await response.arrayBuffer();
+        fontData = buffer;
+      } else {
+        // Arial is a CSS font, so no need to load it using FontFace.
+        currentFontName = "Arial";
+        updateSkeletonFromText();
+        return;
       }
 
-      if (font) {
-        currentFontName = font.names.fontFamily.en;
+      if (fontData) {
+        const font = await opentype.parse(fontData);
+        currentFontName = font.names.fontFamily.en; // Extract the font family name
+
+        // Create a FontFace object
+        fontFace = new FontFace(currentFontName, fontData); // Using ArrayBuffer directly
+        await fontFace.load();
+        document.fonts.add(fontFace);
+
       } else {
         currentFontName = "Arial";
       }
+
+      console.log("🚀 ~ loadFont ~ currentFontName:", currentFontName);
       updateSkeletonFromText();
     } catch (err) {
       console.error("Error loading font:", err);
@@ -212,8 +234,8 @@ console.log("🚀 ~ updateSkeletonFromText ~ canvas.height", canvas.height)
     if (file) {
       const reader = new FileReader();
       reader.onload = async function (e) {
-        const fontData = e.target.result;
-        await loadFont(fontData, true);
+        const fontData = e.target.result; // This is a Data URL, not an ArrayBuffer!
+        await loadFont(file, true); // Pass the File object itself
       };
       reader.readAsArrayBuffer(file);
     }
@@ -221,7 +243,7 @@ console.log("🚀 ~ updateSkeletonFromText ~ canvas.height", canvas.height)
 
   textInput.addEventListener("input", updateSkeletonFromText);
 
-  loadFont(defaultFonts[0].url);
+  loadFont(defaultFonts[0].url); // Load Arial initially
 </script>
 
 </body>
