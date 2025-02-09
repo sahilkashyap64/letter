@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset='utf-8'>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TEST</title>
 <script src="https://cdn.jsdelivr.net/npm/vue@2.6.8/dist/vue.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.11/lodash.min.js"></script>
@@ -13,6 +14,7 @@
 body {
     margin: 0;
     padding: 0;
+    font-size: 16px; /* Set a base font size */
 }
 #app {
     display: flex;
@@ -23,6 +25,7 @@ body {
 }
 .canvas-container {
     flex-basis: 80%;
+    height: 100%; /* Ensure it takes full height */
 }
 
 #myCanvas {
@@ -32,11 +35,16 @@ body {
 .sidebar {
     flex-basis: 20%;
     background-color: #f0f0f0;
-    padding: 20px;
+    padding: 1em; /* Use em for padding */
     height: 100%;
-    overflow: scroll;
+    overflow: auto; /* Change to auto for better handling */
     box-sizing: border-box;
+    font-size: 0.8em; /* Adjust font size in sidebar */
 }
+.sidebar h4 {
+    margin: 0.5em 0;
+}
+
 li.selected {
     background-color: lightyellow;
 }
@@ -44,6 +52,27 @@ li.selected {
 li.matched {
     /* arrow */
     list-style-image: url("data:image/svg+xml,%3C%3Fxml version='1.0' encoding='UTF-8' %3F%3E%3Csvg xmlns='http://www.w3.org/2000/svg' version='1.1' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M0 0 10 5 0 10Z' fill='%23f0f'/%3E%3C/svg%3E");
+}
+
+/* Media Queries for smaller screens */
+@media (max-width: 768px) {
+    #app {
+        flex-direction: column; /* Stack canvas and sidebar */
+    }
+    .canvas-container {
+        flex-basis: 60%; /* Adjusted canvas size */
+    }
+    .sidebar {
+        flex-basis: auto; /* Let sidebar take remaining height */
+        width: 100%;      /* Full width on smaller screens */
+        height: auto;
+        overflow: visible; /* Ensure it is completely visible */
+        font-size: 1em;  /* Bring the font size back up on smaller screens */
+    }
+    button {
+      width: 100%; /* Make buttons full width on mobile */
+      margin-bottom: 0.5em; /* Add some spacing between buttons */
+    }
 }
 </style>
 </head>
@@ -297,6 +326,31 @@ var vm = new Vue({
             this.canvas.previewGesture = [];
 
             this.drawGesture(gesture);
+        },
+        loadSkeletonDataFromFile(event) {
+          const file = event.target.files[0];
+          if (!file) {
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const jsonData = JSON.parse(e.target.result);
+              this.loadSkeletonData(jsonData);
+            } catch (error) {
+              console.error("Error parsing JSON file:", error);
+              alert("Error parsing JSON file. See console for details.");
+            }
+          };
+          reader.readAsText(file);
+        },
+        loadSkeletonData: function(data) {
+          data.forEach(item => {
+            item.gestures.forEach(g => {
+              recognizer.PointClouds.push(new outlines.PointCloud(item.name, g));
+            });
+          });
         },
     },
     mounted: function() {
