@@ -52,6 +52,20 @@
       margin: 5px;
       padding: 5px 10px;
     }
+
+    /* Styles for JSON Export Area */
+    #toolbar {
+      margin-bottom: 10px;
+      text-align: left; /* Align toolbar elements to the left */
+    }
+    #exportArea {
+      text-align: left; /* Align content inside the export area */
+    }
+    textarea {
+      width: 100%;
+      height: 200px;
+      margin-top: 10px;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/opentype.js@latest/dist/opentype.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/skeleton-tracing-js/dist/trace_skeleton.min.js"></script>
@@ -70,7 +84,7 @@
 <input type="file" id="fontUpload" accept=".ttf,.otf,.woff">
 
 <label for="textInput">Enter Text:</label>
-<input type="text" id="textInput" value="ABCD0123">
+<input type="text" id="textInput" value="A">
 
 <div class="container">
   <div class="grid" id="comparisonGrid"></div>
@@ -79,6 +93,14 @@
     <h2>Unicode Character List</h2>
     <div id="unicodeValues"></div>
   </div>
+</div>
+
+<div id="exportArea">
+  <h2>Export Skeleton Data</h2>
+  <div id="toolbar">
+    <button id="exportButton">Export JSON</button>
+  </div>
+  <textarea id="jsonOutput" readonly></textarea>
 </div>
 
 <script>
@@ -117,7 +139,7 @@
       imgCtx.drawImage(img, 0, 0);
 
       let s = TraceSkeleton.fromCanvas(imgCanvas);
-      let v = TraceSkeleton.visualize(s, { scale: DWIDTH / img.width, strokeWidth: 4 });
+      let v = TraceSkeleton.visualize(s, { scale: DWIDTH / img.width, strokeWidth: 4 ,rects: false, keypoints: false});
 
       let gridItem = document.createElement("div");
       gridItem.classList.add("grid-item");
@@ -164,7 +186,12 @@
         str += (imdata.data[j] > 128) ? "\1" : "\0";
       }
       const s = TraceSkeleton.fromCharString(str, canvas.width, canvas.height);
-      const v = TraceSkeleton.visualize(s, { scale: 1, strokeWidth: 1,keypoints: false });
+      console.log("🚀 ~ updateSkeletonFromText ~ s:", s)
+      const v = TraceSkeleton.visualize(s, { scale: 1, strokeWidth: 4, rects: false,keypoints: false });
+console.log("🚀 ~ updateSkeletonFromText ~ v:", v)
+      // Store the skeleton for the export function
+      canvas.skeletonData = s;
+      canvas.letter = letter;
 
       let gridItem = document.createElement("div");
       gridItem.classList.add("grid-item");
@@ -240,10 +267,43 @@
       reader.readAsArrayBuffer(file);
     }
   });
-
+  function convertPolylinesToGestureData(polylines) {
+  const gestureData = [];
+  polylines.forEach((polyline, polylineIndex) => {
+    polyline.forEach(point => {
+      gestureData.push({
+        X: point[0],
+        Y: point[1],
+        ID: polylineIndex // Assign the polyline index as the ID
+      });
+    });
+  });
+  return gestureData;
+}
   textInput.addEventListener("input", updateSkeletonFromText);
+  document.getElementById("exportButton").addEventListener("click", function() {
+  const gridItems = document.querySelectorAll(".grid-item");
+  const exportData = [];
 
-  loadFont(defaultFonts[0].url); // Load Arial initially
+  gridItems.forEach(gridItem => {
+    const canvas = gridItem.querySelector("canvas");
+
+    if (canvas && canvas.skeletonData && canvas.letter) {
+      const letter = canvas.letter;
+      let polylines = canvas.skeletonData.polylines;
+
+      // Convert the polylines to the expected format.
+      const gestureData = convertPolylinesToGestureData(polylines);
+
+      // Export Data should contain the letter/name of the gesture, and the
+      // gesture data.
+      exportData.push({name: letter, gestures: [gestureData]});
+    }
+  });
+
+  document.getElementById("jsonOutput").value = JSON.stringify(exportData, null, 2);
+});
+ loadFont(defaultFonts[0].url); // Load Arial initially
 </script>
 
 </body>
